@@ -27,6 +27,7 @@ export interface RepositoryAdapter {
   comment(ref: ChangeRequestRef, body: string): Promise<void>
   reportChangeRequest(ref: ChangeRequestRef, action: 'claim' | 'close'): Promise<void>
 }
+/** Raised when a configured provider does not implement a requested live operation. */
 export class UnsupportedRepositoryOperation extends Error {
   constructor(readonly operation: string, provider: RepositoryProvider) { super(`${provider} does not support ${operation}`) }
 }

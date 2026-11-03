@@ -1,6 +1,6 @@
-import type { ChangeRequest, RepositoryAdapter, RepositoryCapabilities, RepositoryHealth } from './adapter.ts'
+import { UnsupportedRepositoryOperation, type ChangeRequest, type RepositoryAdapter, type RepositoryCapabilities, type RepositoryHealth } from './adapter.ts'
 import { changeRequestPath } from './adapter.ts'
-import type { ChangeRequestRef, RepositoryBinding } from '../core/index.ts'
+import { changeRequestKey, type ChangeRequestRef, type RepositoryBinding } from '../core/index.ts'
 import type { RepositoryConfig } from './config.ts'
 
 export interface GitlabTransport {
@@ -11,8 +11,6 @@ const Item = (value: unknown): Record<string, unknown> => {
   return value as Record<string, unknown>
 }
 const text = (value: unknown): string => typeof value === 'string' ? value : ''
-const number = (value: unknown): number => typeof value === 'number' && Number.isSafeInteger(value) ? value : Number(value)
-
 export function createGitlabTransport(config: RepositoryConfig, fetcher: typeof fetch = fetch): GitlabTransport {
   const base = `https://${config.host}/api/v4`
   return {
@@ -27,6 +25,7 @@ export function createGitlabTransport(config: RepositoryConfig, fetcher: typeof 
     },
   }
 }
+/** GitLab REST adapter for one configured project. */
 export class GitlabRepositoryAdapter implements RepositoryAdapter {
   readonly provider = 'gitlab' as const
   readonly binding: RepositoryBinding
@@ -40,10 +39,12 @@ export class GitlabRepositoryAdapter implements RepositoryAdapter {
     catch (error) { return { state: 'error', detail: error instanceof Error ? error.message : String(error) } }
   }
   link(ref: ChangeRequestRef): string {
+    if (ref.kind === 'pull-request') throw new UnsupportedRepositoryOperation('pull-request', this.provider)
     const path = changeRequestPath(ref.kind)
     return `https://${this.config.host}/${this.config.repository}/-/${path}/${ref.iid}`
   }
   async readChangeRequest(ref: ChangeRequestRef): Promise<ChangeRequest> {
+    if (ref.kind === 'pull-request') throw new UnsupportedRepositoryOperation('pull-request', this.provider)
     const item = Item(await this.transport.request(`/${changeRequestPath(ref.kind)}/${ref.iid}`))
     const pipeline = item.head_pipeline && typeof item.head_pipeline === 'object' ? Item(item.head_pipeline) : undefined
     return { ref: { ...this.binding, kind: ref.kind, iid: ref.iid, url: text(item.web_url) || this.link(ref) }, title: text(item.title),
@@ -51,10 +52,20 @@ export class GitlabRepositoryAdapter implements RepositoryAdapter {
       updatedAt: text(item.updated_at) || undefined, ...(pipeline ? { pipeline: { status: text(pipeline.status), url: text(pipeline.web_url) || undefined } } : {}) }
   }
   async comment(ref: ChangeRequestRef, body: string): Promise<void> {
+    if (ref.kind === 'pull-request') throw new UnsupportedRepositoryOperation('pull-request', this.provider)
     await this.transport.request(`/${changeRequestPath(ref.kind)}/${ref.iid}/notes`, { method: 'POST', body: { body } })
   }
   async reportChangeRequest(ref: ChangeRequestRef, action: 'claim' | 'close'): Promise<void> {
-    if (action === 'claim') { await this.comment(ref, '<!-- dsh-superagent:claim -->'); return }
+    if (ref.kind === 'pull-request') throw new UnsupportedRepositoryOperation('pull-request', this.provider)
+    if (action === 'claim') {
+      // GitLab has no portable idempotency key for note creation. Search for our stable marker before posting so a
+      // retried report after a successful HTTP response does not add another claim note.
+      const marker = `<!-- dsh-superagent:claim ${changeRequestKey(ref)} -->`
+      const notes = await this.transport.request(`/${changeRequestPath(ref.kind)}/${ref.iid}/notes?per_page=100&search=${encodeURIComponent(marker)}`)
+      if (Array.isArray(notes) && notes.some(note => note && typeof note === 'object' && typeof (note as { body?: unknown }).body === 'string' && (note as { body: string }).body.includes(marker))) return
+      await this.comment(ref, marker)
+      return
+    }
     await this.transport.request(`/${changeRequestPath(ref.kind)}/${ref.iid}`, { method: 'PUT', body: { state_event: 'close' } })
   }
 }

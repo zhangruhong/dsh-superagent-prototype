@@ -80,7 +80,7 @@ export class Setup {
   private async resolve(settings: Settings): Promise<Deployment> {
     const { context, machine, lifetime } = this.host
     const probe = this.probe()
-    const repositoryValue = settings.sources.repository?.config
+    const repositoryValue = settings.sources.repository?.enabled !== false ? settings.sources.repository?.config : undefined
     const deployment = repositoryValue && Object.keys(repositoryValue).length
       ? resolveRepositoryDeployment(machine, repositoryValue)
       : await resolveDeployment(machine, settings.sources.github?.config, probe)

@@ -310,7 +310,7 @@ Some generic modules still refer directly to GitHub or Feishu:
 | `src/core/stage.ts` | `ticketStage` and `canRetry`: the Ticket stages of [003 Execution](003-execution.md) |
 | `src/core/errors.ts` | `UserError` and `USER_ERRORS` |
 | `src/core/reasons.ts` | `Reason`, `REASONS` and `reasonText`: why the core recorded a Decision or set a Trigger aside, by code |
-| `src/core/ids.ts` | `key`: ids derived from their inputs, equal for equal inputs |
+| `src/core/ids.ts` | `key` and `changeRequestKey`: ids derived from their inputs, equal for equal inputs |
 | `src/core/memory.ts` | `MemoryRepositories`: the Store's repositories in memory, in the Store's order and with its nested rollback, for domain tests |
 | `src/core/index.ts` | The core's exports |
 | `src/app/runtime.ts` | The Runtime, the composition root, with its start and stop |
@@ -342,6 +342,9 @@ Some generic modules still refer directly to GitHub or Feishu:
 | `src/app/tools/tool.ts` | The `Tool` type, `readTool`, the `orchestrator_read` of both roles, and `AcknowledgementSchema` |
 | `src/app/tools/main.ts` | The main Session's tools |
 | `src/app/tools/executor.ts` | An Executor Session's tools |
+| `src/repositories/adapter.ts`, `config.ts`, `registry.ts` | Provider-neutral repository contract, configuration and adapter selection |
+| `src/repositories/gitlab.ts` | GitLab REST adapter for issues, merge requests, comments, pipelines and links |
+| `src/repositories/cnb.ts` | CNB capability-only adapter; unsupported live operations are typed and do not call the network |
 | `src/app/http.ts` | The `/orchestrator/api` routes: the same-origin check, request limits and one status per kind of failure |
 | `src/app/api.ts` | `Api`, every route with its parameters, query, body and response, and the filters of the lists; it imports only types, so the panel bundles it |
 | `src/app/views/text.ts` | The two forms of a view's text: `preview`, plain text on one line, and `markdown` without HTML; `plain` and `readable` |
@@ -372,6 +375,9 @@ Some generic modules still refer directly to GitHub or Feishu:
 | `src/sources/feishu-loops.ts` | The Feishu loops: the event consumer, history recovery, chat names and polling of subscribed topics |
 | `src/sources/feishu-channel.ts` | The Feishu Channel: topic replies, `sent` or `gone` |
 | `src/sources/feishu-read.ts` | The `feishu/` reads of a Trigger's message, its root, parent and topic, and `feishuThreadContext`, which gives them to assessments with their images |
+| `src/sources/wecom.ts` | The WeCom intelligent-robot Source and reconnect loop, exported as `./wecom-watch` |
+| `src/sources/wecom-trigger.ts`, `wecom-channel.ts`, `wecom-read.ts`, `wecom-ws.ts` | WeCom message normalization, outbound markdown, bounded transcript reads and the long-connection transport |
+| `src/sources/repository.ts` | The settings Source for selecting the GitLab or CNB repository provider |
 | `src/sources/admission-context.ts` | The bounded window an assessment starts from: the first pages of a Trigger's Thread, read through its kind, and the messages around the Trigger |
 | `src/sources/feishu-image.ts` | Reads a Feishu message's image as an attachment for the assessing Session |
 | `src/client/index.tsx` | The client plugin entry: the sidebar entry, the main panel and the page in DeepSeek Harness's Plugin Manager |
@@ -397,7 +403,7 @@ Some generic modules still refer directly to GitHub or Feishu:
 | `src/client/locales.ts` | All copy in both languages, and the glossary of [001 Domain model](001-domain.md) |
 | `src/client/client.css`, `css.d.ts` | The panel's stylesheet, loaded as text |
 
-`src/sources/github.ts` and `src/sources/feishu.ts` are also the entries of the two Source plugins, built by `tsdown.config.ts` and exported in `package.json` as `./github-watch` and `./feishu-watch`. The bundle's `cordis.patch.yml` inserts the three plugins, with Feishu disabled.
+`src/sources/github.ts`, `src/sources/feishu.ts`, `src/sources/wecom.ts` and `src/sources/repository.ts` are Source plugin entries, built by `tsdown.config.ts` and exported in `package.json`. The bundle's `cordis.patch.yml` inserts GitHub and the provider configuration, while Feishu and WeCom remain disabled until configured.
 
 ## Tests
 
@@ -409,6 +415,8 @@ Some generic modules still refer directly to GitHub or Feishu:
 | `tests/registry.spec.ts` | `SourceRegistry`: instances, validation, Policy parts, Channels and Thread context |
 | `tests/sources.spec.ts` | The Feishu and GitHub Sources on a `SourceContext`: translation, polls and read positions, the pull request rules, health |
 | `tests/commands.spec.ts` | CLI calls as the deployment's accounts, the Channels' answers, and repository-scoped GitHub calls |
+| `tests/ids.spec.ts`, `tests/repositories.spec.ts`, `tests/provider-setup.spec.ts` | Provider-neutral identities, GitLab/CNB adapters and GitLab-only setup |
+| `tests/wecom.spec.ts`, `tests/executor-provider.spec.ts` | WeCom trigger/connection/channel behavior and structured change-request reports |
 | `tests/feishu-read.spec.ts`, `tests/github-read.spec.ts` | Feishu and GitHub reads |
 | `tests/admission-context.spec.ts`, `tests/feishu-image.spec.ts` | The Thread window of assessments, and Feishu image reads |
 | `tests/assessment.spec.ts` | What the MasterAssessor keeps per Eval, and when it lets go |

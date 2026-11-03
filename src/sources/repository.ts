@@ -17,6 +17,23 @@ export const repositoryKind: SourceKind<RepositoryConfig> = {
     { key: 'pollSeconds', type: 'number', advanced: true, min: 15, max: 3600, label: { zh: '轮询间隔 / 秒', en: 'Polling interval / seconds' } },
   ],
   health: [],
+  environment: {
+    variables: [
+      { key: 'DSH_SUPERAGENT_REPOSITORY_PROVIDER', description: { zh: '当前工单使用的代码仓库提供方', en: 'Repository provider used by this ticket' } },
+      { key: 'DSH_SUPERAGENT_REPOSITORY_HOST', description: { zh: '当前代码仓库的主机', en: 'Repository host' } },
+      { key: 'DSH_SUPERAGENT_REPOSITORY', description: { zh: '当前工单使用的项目/仓库', en: 'Repository used by this ticket' } },
+      { key: 'DSH_SUPERAGENT_REPOSITORY_DEFAULT_BRANCH', description: { zh: '当前代码仓库的默认分支', en: 'Repository default branch' } },
+    ],
+    values: ({ deployment }) => {
+      const binding = deployment.repositoryBinding
+      return {
+        DSH_SUPERAGENT_REPOSITORY_PROVIDER: binding?.provider ?? 'github',
+        DSH_SUPERAGENT_REPOSITORY_HOST: binding?.host ?? 'github.com',
+        DSH_SUPERAGENT_REPOSITORY: deployment.repository,
+        DSH_SUPERAGENT_REPOSITORY_DEFAULT_BRANCH: binding?.defaultBranch ?? '',
+      }
+    },
+  },
 }
 export const name = 'dsh-superagent-repository'
 export const inject = ['orchestrator']

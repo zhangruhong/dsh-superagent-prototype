@@ -130,6 +130,9 @@ async function watch(ctx: SourceContext, signal: AbortSignal): Promise<void> {
   await ctx.ready
   // Setup restarts dsh-superagent once it resolves the accounts; until then nothing is polled.
   if (!ctx.configured()) { ctx.report('github', health('paused', 'setupPending')); return }
+  // A GitLab or CNB deployment keeps the GitHub plugin installed for compatibility, but it has no GitHub CLI account.
+  // Do not let the default GitHub Source instance turn that absence into repeated ENOENT poll failures.
+  if (!ctx.deployment.github.cli) { ctx.report('github', health('paused', 'sourceOff')); return }
   while (!signal.aborted) {
     const config = ctx.config<GithubConfig>(SOURCE)
     try {

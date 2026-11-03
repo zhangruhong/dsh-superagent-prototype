@@ -2,6 +2,7 @@ import type { ChangeRequestRef, RepositoryBinding } from '../core/index.ts'
 import { UnsupportedRepositoryOperation, type ChangeRequest, type RepositoryAdapter, type RepositoryCapabilities, type RepositoryHealth } from './adapter.ts'
 import type { RepositoryConfig } from './config.ts'
 
+/** Capability boundary for CNB; live operations remain explicit until the CNB API adapter is added. */
 export class CnbRepositoryAdapter implements RepositoryAdapter {
   readonly provider = 'cnb' as const
   readonly binding: RepositoryBinding
