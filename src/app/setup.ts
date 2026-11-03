@@ -3,6 +3,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { UserError } from '../core/index.ts'
 import { SETUP_FIELDS, resolveDeployment, resolveFeishuBot, resolveRepositoryDeployment, WecomBotSchema, workerProbe, type Deployment, type Machine } from '../deployment.ts'
 import { RepositoryConfigSchema } from '../repositories/config.ts'
+import { createRepositoryAdapter } from '../repositories/registry.ts'
 import { agentVariables, applyEnvironment, verifyEnvironment, withoutDirectory, workerBin, writeEnvironment } from '../infra/environment.ts'
 import type { Settings, SettingsBlock } from '../policy.ts'
 import { SetupError, type SetupProblem } from '../setup.ts'
@@ -92,7 +93,8 @@ export class Setup {
     const wecomValue = settings.sources.wecom?.config
     const wecom = settings.sources.wecom?.enabled !== false && wecomValue && Object.keys(wecomValue).length
       ? WecomBotSchema.parse(wecomValue) : undefined
-    const resolved = { ...deployment, ...(feishu ? { feishu } : {}), ...(wecom ? { wecom } : {}) }
+    const repositoryAdapter = repositoryValue && Object.keys(repositoryValue).length ? createRepositoryAdapter(repositoryValue) : undefined
+    const resolved = { ...deployment, ...(repositoryAdapter ? { repositoryAdapter } : {}), ...(feishu ? { feishu } : {}), ...(wecom ? { wecom } : {}) }
     const machineProblem = (error: unknown): never => {
       if (error instanceof SetupError) throw error
       throw new SetupError('environmentFailed', { output: error instanceof Error ? error.message : String(error) })

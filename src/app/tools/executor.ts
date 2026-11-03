@@ -9,6 +9,7 @@ import type { Store } from '../store.ts'
 import { reportRelay, threadFollowedNotice } from '../notices.ts'
 import type { Sessions } from '../sessions.ts'
 import { AcknowledgementSchema, readTool, tool, type Tool } from './tool.ts'
+import type { RepositoryAdapter } from '../../repositories/adapter.ts'
 
 export interface ExecutorToolsHost {
   readonly engine: Pick<EngineForExecutor, 'report' | 'reply' | 'markUnrelated' | 'handback' | 'followForContext'>
@@ -17,6 +18,7 @@ export interface ExecutorToolsHost {
   readonly resources: ResourceHost
   /** GitHub Source context whose pull-request rules govern claiming a reported PR. */
   readonly github: SourceContext
+  readonly repository?: RepositoryAdapter
   sendReplies(): Promise<void>
 }
 
@@ -80,12 +82,25 @@ export function executorTools(host: ExecutorToolsHost, ticket: Ticket): Tool[] {
         human_action: z.string().trim().min(1).max(1000).nullish().describe('One concrete question for a person, also with state=progress; omit to keep the pending one, null to clear it.'),
         question_for_trigger_id: z.string().optional().describe('With human_action: the human message that raised the question, which is asked where that person wrote.'),
         pr_number: z.number().int().positive().nullish().describe(`The ticket's PR: its source PR, or one by ${host.github.deployment.github.login} from a branch named after this ticket (DSH_SUPERAGENT_NAME).`),
+        change_request: z.object({ provider: z.enum(['github', 'gitlab', 'cnb']), host: z.string().trim().min(1), repository: z.string().trim().min(1),
+          kind: z.enum(['issue', 'pull-request', 'merge-request']), iid: z.number().int().positive() }).strict().optional(),
         reply_to_trigger_id: z.string().optional().describe('The explicit human question this report answers; never for ordinary progress.'),
-      }).strict(),
+      }).strict().superRefine((value, context) => {
+        if (value.pr_number != null && value.change_request) context.addIssue({ code: 'custom', path: ['change_request'], message: 'Use pr_number or change_request, not both' })
+      }),
       execute: async (args, signal) => {
         const current = host.store.tickets.get(ticketId)
         if (!current || !liveTicket(current)) throw new Error('Ticket ended (PR was closed or work finished); do not resume it')
         const pull = args.pr_number != null ? await readPull(host.github, args.pr_number, signal) : undefined
+        const changeRequest = args.change_request
+        if (changeRequest) {
+          const adapter = host.repository
+          if (!adapter || adapter.provider !== changeRequest.provider) throw new Error(`No ${changeRequest.provider} repository adapter is configured`)
+          if (adapter.binding.host.toLowerCase() !== changeRequest.host.toLowerCase() || adapter.binding.repository !== changeRequest.repository) throw new Error('Reported change request is outside the configured repository')
+          const ref = { ...changeRequest, url: adapter.link(changeRequest) }
+          await adapter.readChangeRequest(ref)
+          await adapter.reportChangeRequest(ref, 'claim')
+        }
         // Claim the PR, record the report, and queue the relay atomically so a rejected PR claim or invalid report leaves no partial state, and a recorded report always reaches the main Session.
         return host.store.atomic(() => {
           const refused = pull && claimPull(host.github, ticketId, pull)

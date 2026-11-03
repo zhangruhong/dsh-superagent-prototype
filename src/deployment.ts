@@ -9,6 +9,7 @@ import type { SubprocessRuntime } from '@deepseek-ai/dsh-subprocess'
 import { runAsWorker, sameDirectory, withoutDirectory, workerBin } from './infra/environment.ts'
 import { SetupError } from './setup.ts'
 import { RepositoryConfigSchema, type RepositoryConfig } from './repositories/config.ts'
+import type { RepositoryAdapter } from './repositories/adapter.ts'
 
 const reason = (error: unknown): string => error instanceof Error ? error.message : String(error)
 const absolute = (description: string) => s.string().pattern(/^\//).description(`${description} Absolute path.`)
@@ -60,6 +61,7 @@ export interface Deployment extends Machine {
   github: { cli: string; login: string; noreply: string }
   feishu?: FeishuBot
   repositoryBinding?: { provider: RepositoryConfig['provider']; host: string; repository: string; defaultBranch: string }
+  repositoryAdapter?: RepositoryAdapter
   wecom?: { botId: string; secret: string; wsUrl: string }
 }
 export interface FeishuBot { cli: string; appId: string; brand: 'feishu' | 'lark'; botId: string; name: string }
@@ -116,6 +118,8 @@ export async function resolveDeployment(machine: Machine, github: unknown, probe
 export function resolveRepositoryDeployment(machine: Machine, value: unknown): Deployment {
   const config = RepositoryConfigSchema.parse(value)
   if (config.provider === 'github') throw new SetupError('repositoryProviderInvalid')
+  if (!config.repository) throw new SetupError('repositoryUnset', { provider: config.provider })
+  if (!config.token) throw new SetupError('repositoryTokenUnset', { provider: config.provider })
   return { ...machine, repository: config.repository, github: { cli: '', login: '', noreply: '' },
     repositoryBinding: { provider: config.provider, host: config.host, repository: config.repository, defaultBranch: config.defaultBranch } }
 }
