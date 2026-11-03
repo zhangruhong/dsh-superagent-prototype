@@ -49,7 +49,7 @@ export const GithubAccountsSchema = z.object({
 })
 export const FeishuBotSchema = z.object({ cli: z.string().trim().default('') })
 export const WecomBotSchema = z.object({
-  botId: z.string().trim().min(1).max(128), secret: z.string().trim().min(1).max(512),
+  botId: z.string().trim().max(128).default(''), secret: z.string().trim().max(512).default(''),
   wsUrl: z.url().default('wss://openws.work.weixin.qq.com'),
 }).strict()
 /** Source configuration keys that affect deployment setup and trigger a restart when changed. */
