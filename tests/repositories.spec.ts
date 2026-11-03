@@ -1,8 +1,10 @@
 import { expect, it, vi } from 'vitest'
 import { CnbRepositoryAdapter } from '../src/repositories/cnb.ts'
 import { createRepositoryAdapter } from '../src/repositories/registry.ts'
-import { GitlabRepositoryAdapter } from '../src/repositories/gitlab.ts'
+import { createGitlabTransport, GitlabRepositoryAdapter } from '../src/repositories/gitlab.ts'
 import { UnsupportedRepositoryOperation } from '../src/repositories/adapter.ts'
+import { repositoryKind } from '../src/sources/repository.ts'
+import { RepositoryConfigSchema } from '../src/repositories/config.ts'
 
 const config = { provider: 'gitlab' as const, host: 'gitlab.example.com', repository: 'acme/app', token: 'secret', defaultBranch: 'main', pollSeconds: 60 }
 it('builds a GitLab adapter and canonical MR links', () => {
@@ -41,8 +43,26 @@ it('does not duplicate an existing GitLab claim marker', async () => {
 it('selects GitLab from the provider registry', () => {
   expect(createRepositoryAdapter(config)).toBeInstanceOf(GitlabRepositoryAdapter)
 })
+it('uses the configured GitLab host, project encoding and private-token header', async () => {
+  const fetcher = vi.fn().mockResolvedValue({ ok: true, status: 200, text: async () => '{}' })
+  const transport = createGitlabTransport(config, fetcher)
+  await transport.request('/merge_requests/7', { method: 'POST', body: { body: 'hello' } })
+  expect(fetcher).toHaveBeenCalledWith('https://gitlab.example.com/api/v4/projects/acme%2Fapp/merge_requests/7', {
+    method: 'POST', headers: { 'PRIVATE-TOKEN': 'secret', 'Content-Type': 'application/json' }, body: '{"body":"hello"}',
+  })
+})
 it('keeps CNB capability-only without making a network call', async () => {
   const adapter = new CnbRepositoryAdapter({ ...config, provider: 'cnb', host: 'cnb.cool' })
   await expect(adapter.readChangeRequest({ ...adapter.binding, kind: 'pull-request', iid: 1 })).rejects.toBeInstanceOf(UnsupportedRepositoryOperation)
   expect(adapter.capabilities().readChangeRequest).toBe(false)
+})
+
+it('publishes provider-neutral repository variables without exposing its token', () => {
+  const config = RepositoryConfigSchema.parse({ provider: 'gitlab', host: 'gitlab.example.com', repository: 'acme/app', token: 'secret' })
+  const values = repositoryKind.environment!.values({ deployment: {
+    repository: 'acme/app', repositoryBinding: { provider: 'gitlab', host: 'gitlab.example.com', repository: 'acme/app', defaultBranch: 'main' },
+  } as never, config })
+  expect(values).toEqual({ DSH_SUPERAGENT_REPOSITORY_PROVIDER: 'gitlab', DSH_SUPERAGENT_REPOSITORY_HOST: 'gitlab.example.com',
+    DSH_SUPERAGENT_REPOSITORY: 'acme/app', DSH_SUPERAGENT_REPOSITORY_DEFAULT_BRANCH: 'main' })
+  expect(JSON.stringify(values)).not.toContain('secret')
 })

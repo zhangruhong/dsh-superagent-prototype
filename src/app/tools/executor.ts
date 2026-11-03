@@ -26,6 +26,17 @@ export const ChangeRequestReportSchema = z.object({
   provider: z.enum(['github', 'gitlab', 'cnb']), host: z.string().trim().min(1), repository: z.string().trim().min(1),
   kind: z.enum(['issue', 'pull-request', 'merge-request']), iid: z.number().int().positive(),
 }).strict()
+export const OrchestratorReportSchema = z.object({
+  state: z.enum(['progress', 'ready', 'blocked', 'failed', 'dropped']),
+  summary: z.string().min(1),
+  human_action: z.string().trim().min(1).max(1000).nullish().describe('One concrete question for a person, also with state=progress; omit to keep the pending one, null to clear it.'),
+  question_for_trigger_id: z.string().optional().describe('With human_action: the human message that raised the question, which is asked where that person wrote.'),
+  pr_number: z.number().int().positive().nullish().describe('The ticket\'s GitHub PR number; use change_request for other repository providers.'),
+  change_request: ChangeRequestReportSchema.optional(),
+  reply_to_trigger_id: z.string().optional().describe('The explicit human question this report answers; never for ordinary progress.'),
+}).strict().superRefine((value, context) => {
+  if (value.pr_number != null && value.change_request) context.addIssue({ code: 'custom', path: ['change_request'], message: 'Use pr_number or change_request, not both' })
+})
 
 export function executorTools(host: ExecutorToolsHost, ticket: Ticket): Tool[] {
   const ticketId = ticket.id
@@ -81,17 +92,7 @@ export function executorTools(host: ExecutorToolsHost, ticket: Ticket): Tool[] {
     tool({
       name: 'orchestrator_report',
       description: 'Report progress, ready, blocked, failed or dropped, as the work and handoff sections say.',
-      schema: z.object({
-        state: z.enum(['progress', 'ready', 'blocked', 'failed', 'dropped']),
-        summary: z.string().min(1),
-        human_action: z.string().trim().min(1).max(1000).nullish().describe('One concrete question for a person, also with state=progress; omit to keep the pending one, null to clear it.'),
-        question_for_trigger_id: z.string().optional().describe('With human_action: the human message that raised the question, which is asked where that person wrote.'),
-        pr_number: z.number().int().positive().nullish().describe(`The ticket's PR: its source PR, or one by ${host.github.deployment.github.login} from a branch named after this ticket (DSH_SUPERAGENT_NAME).`),
-        change_request: ChangeRequestReportSchema.optional(),
-        reply_to_trigger_id: z.string().optional().describe('The explicit human question this report answers; never for ordinary progress.'),
-      }).strict().superRefine((value, context) => {
-        if (value.pr_number != null && value.change_request) context.addIssue({ code: 'custom', path: ['change_request'], message: 'Use pr_number or change_request, not both' })
-      }),
+      schema: OrchestratorReportSchema,
       execute: async (args, signal) => {
         const current = host.store.tickets.get(ticketId)
         if (!current || !liveTicket(current)) throw new Error('Ticket ended (PR was closed or work finished); do not resume it')

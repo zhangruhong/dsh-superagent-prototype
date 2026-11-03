@@ -2,7 +2,7 @@ import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { WebSocketServer } from 'ws'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { WecomConfigSchema } from '../src/sources/wecom.ts'
+import { runWecom, WecomConfigSchema, wecomKind } from '../src/sources/wecom.ts'
 import { sendWecom, truncateWecom, WECOM_MARKDOWN_MAX_BYTES } from '../src/sources/wecom-channel.ts'
 import { forgetWecom, rememberWecom, wecomThreadContext } from '../src/sources/wecom-read.ts'
 import { wecomText, wecomTrigger, wecomTriggerId } from '../src/sources/wecom-trigger.ts'
@@ -72,6 +72,27 @@ describe('wecom trigger', () => {
     const trigger = wecomTrigger(message({ quote: { msgtype: 'text', text: { content: 'the earlier request' } } }), 'bot-1')!
     expect(trigger.meta.quote).toBe('the earlier request')
   })
+})
+
+it('declares group and direct admission scopes and provider-safe environment values', () => {
+  expect(wecomKind.scope!({ meta: { chattype: 'group' } }, WecomConfigSchema.parse({}))).toMatchObject({ listened: true, observed: false, row: 'group' })
+  expect(wecomKind.scope!({ meta: { direct: true } }, WecomConfigSchema.parse({}))).toMatchObject({ listened: true, observed: false, row: 'direct' })
+  expect(wecomKind.policy!.schema.parse({ allowed: [{ id: 'alice' }] })).toEqual({ allowed: [{ id: 'alice' }] })
+  expect(wecomKind.environment!.values({ deployment: {} as never, config: WecomConfigSchema.parse({}), trigger: undefined })).toEqual({ DSH_SUPERAGENT_WECOM_CHAT: '' })
+})
+
+it('pauses without opening a socket while the WeCom Source is disabled', async () => {
+  const controller = new AbortController()
+  const report = vi.fn(() => controller.abort())
+  const ctx = {
+    ready: Promise.resolve(),
+    config: () => undefined,
+    configured: () => false,
+    deployment: {} as never,
+    report,
+  } as never
+  await runWecom(ctx, controller.signal)
+  expect(report).toHaveBeenCalledWith('wecom', expect.objectContaining({ state: 'paused', code: 'sourceOff' }))
 })
 
 describe('wecom long connection', () => {

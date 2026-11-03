@@ -1,7 +1,8 @@
 import { z } from 'zod'
 
 const host = z.string().trim().min(1).regex(/^[a-z0-9][a-z0-9.-]*(?::[0-9]+)?$/i)
-const repository = z.string().trim().min(1).refine(value => !value.split('/').some(part => part === '.' || part === '..'), 'Invalid repository path')
+// An empty repository is a valid unconfigured Source default; setup reports it only when this provider is enabled.
+const repository = z.string().trim().refine(value => value === '' || !value.split('/').some(part => part === '.' || part === '..'), 'Invalid repository path')
 export const RepositoryConfigSchema = z.object({
   provider: z.enum(['github', 'gitlab', 'cnb']).default('gitlab'),
   host: host.default('gitlab.com'),
