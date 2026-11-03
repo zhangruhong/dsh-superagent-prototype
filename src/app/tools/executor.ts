@@ -22,6 +22,11 @@ export interface ExecutorToolsHost {
   sendReplies(): Promise<void>
 }
 
+export const ChangeRequestReportSchema = z.object({
+  provider: z.enum(['github', 'gitlab', 'cnb']), host: z.string().trim().min(1), repository: z.string().trim().min(1),
+  kind: z.enum(['issue', 'pull-request', 'merge-request']), iid: z.number().int().positive(),
+}).strict()
+
 export function executorTools(host: ExecutorToolsHost, ticket: Ticket): Tool[] {
   const ticketId = ticket.id
   return [
@@ -82,8 +87,7 @@ export function executorTools(host: ExecutorToolsHost, ticket: Ticket): Tool[] {
         human_action: z.string().trim().min(1).max(1000).nullish().describe('One concrete question for a person, also with state=progress; omit to keep the pending one, null to clear it.'),
         question_for_trigger_id: z.string().optional().describe('With human_action: the human message that raised the question, which is asked where that person wrote.'),
         pr_number: z.number().int().positive().nullish().describe(`The ticket's PR: its source PR, or one by ${host.github.deployment.github.login} from a branch named after this ticket (DSH_SUPERAGENT_NAME).`),
-        change_request: z.object({ provider: z.enum(['github', 'gitlab', 'cnb']), host: z.string().trim().min(1), repository: z.string().trim().min(1),
-          kind: z.enum(['issue', 'pull-request', 'merge-request']), iid: z.number().int().positive() }).strict().optional(),
+        change_request: ChangeRequestReportSchema.optional(),
         reply_to_trigger_id: z.string().optional().describe('The explicit human question this report answers; never for ordinary progress.'),
       }).strict().superRefine((value, context) => {
         if (value.pr_number != null && value.change_request) context.addIssue({ code: 'custom', path: ['change_request'], message: 'Use pr_number or change_request, not both' })
@@ -93,6 +97,7 @@ export function executorTools(host: ExecutorToolsHost, ticket: Ticket): Tool[] {
         if (!current || !liveTicket(current)) throw new Error('Ticket ended (PR was closed or work finished); do not resume it')
         const pull = args.pr_number != null ? await readPull(host.github, args.pr_number, signal) : undefined
         const changeRequest = args.change_request
+        let summary = args.summary
         if (changeRequest) {
           const adapter = host.repository
           if (!adapter || adapter.provider !== changeRequest.provider) throw new Error(`No ${changeRequest.provider} repository adapter is configured`)
@@ -100,12 +105,13 @@ export function executorTools(host: ExecutorToolsHost, ticket: Ticket): Tool[] {
           const ref = { ...changeRequest, url: adapter.link(changeRequest) }
           await adapter.readChangeRequest(ref)
           await adapter.reportChangeRequest(ref, 'claim')
+          summary = `${summary}\n\nMR: ${ref.url}`
         }
         // Claim the PR, record the report, and queue the relay atomically so a rejected PR claim or invalid report leaves no partial state, and a recorded report always reaches the main Session.
         return host.store.atomic(() => {
           const refused = pull && claimPull(host.github, ticketId, pull)
           if (refused) throw new Error(refused)
-          const report = { state: args.state, summary: args.summary, ...(args.human_action !== undefined ? { question: args.human_action } : {}),
+          const report = { state: args.state, summary, ...(args.human_action !== undefined ? { question: args.human_action } : {}),
             ...(args.question_for_trigger_id ? { askedBy: args.question_for_trigger_id } : {}),
             ...(args.reply_to_trigger_id ? { answers: args.reply_to_trigger_id } : {}) }
           const updated = host.engine.report(ticketId, report)
