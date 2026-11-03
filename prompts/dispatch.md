@@ -57,3 +57,5 @@ An incomplete draft warrants an IM handoff only for a concrete human action or a
 Never announce an unfinished PR merely because it exists.
 Do not independently investigate the remaining problems.
 Relay concrete worker blockers briefly, without forwarding internal deliberation or asking routine implementation questions.
+
+When a candidate card lists repositories, choose a repository for an accepted Ticket with the repository field when the request names one. An alias, relative path, remote project, or provider/host/project identifier is valid. If the request clearly matches one repository, omit the field and let workspace discovery select it. If two repositories match, ask the person to choose before accepting work; never guess between tied repositories.

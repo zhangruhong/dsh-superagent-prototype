@@ -1,3 +1,5 @@
+import { mkdirSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs'
+import { join } from 'node:path'
 import { expect, it } from 'vitest'
 import { resolveRepositoryDeployment, WecomBotSchema } from '../src/deployment.ts'
 import { RepositoryConfigSchema } from '../src/repositories/config.ts'
@@ -18,5 +20,18 @@ it('normalizes an empty WeCom WebSocket URL and leaves incomplete credentials un
 })
 
 it('keeps an empty Repository Source configuration valid until setup is enabled', () => {
-  expect(RepositoryConfigSchema.parse({})).toEqual({ provider: 'gitlab', host: 'gitlab.com', repository: '', token: '', defaultBranch: 'main', pollSeconds: 60 })
+  expect(RepositoryConfigSchema.parse({})).toEqual({ mode: 'single', provider: 'gitlab', host: 'gitlab.com', repository: '', workspaceRoot: '', defaultRepository: '', token: '', defaultBranch: 'main', pollSeconds: 60 })
+})
+
+it('builds a recursive workspace catalog without selecting an arbitrary repository', () => {
+  const root = mkdtempSync(join(process.cwd(), '.tmp-provider-workspace-'))
+  try {
+    const app = join(root, 'services', 'api'); mkdirSync(join(app, '.git'), { recursive: true })
+    writeFileSync(join(app, '.git', 'config'), '[remote "origin"]\n\turl = git@gitlab.com:team/api.git\n')
+    writeFileSync(join(app, '.git', 'HEAD'), 'ref: refs/heads/main\n')
+    const deployment = resolveRepositoryDeployment(testMachine(), { mode: 'workspace', workspaceRoot: root, provider: 'gitlab' })
+    expect(deployment.repository).toBe('team/api')
+    expect(deployment.repositoryCatalog).toMatchObject([{ alias: 'api', relativePath: 'services/api', provider: 'gitlab', repository: 'team/api' }])
+    expect(deployment.repositoryBinding).toMatchObject({ alias: 'api', localPath: app })
+  } finally { rmSync(root, { recursive: true, force: true }) }
 })

@@ -10,6 +10,9 @@ import { runAsWorker, sameDirectory, withoutDirectory, workerBin } from './infra
 import { SetupError } from './setup.ts'
 import { RepositoryConfigSchema, type RepositoryConfig } from './repositories/config.ts'
 import type { RepositoryAdapter } from './repositories/adapter.ts'
+import type { WorkspaceRepository } from './repositories/workspace.ts'
+import type { RepositoryBinding } from './core/index.ts'
+import { discoverWorkspaceRepositories, selectWorkspaceRepository } from './repositories/workspace.ts'
 
 const reason = (error: unknown): string => error instanceof Error ? error.message : String(error)
 const absolute = (description: string) => s.string().pattern(/^\//).description(`${description} Absolute path.`)
@@ -60,8 +63,10 @@ export interface Deployment extends Machine {
   repository: string
   github: { cli: string; login: string; noreply: string }
   feishu?: FeishuBot
-  repositoryBinding?: { provider: RepositoryConfig['provider']; host: string; repository: string; defaultBranch: string }
+  repositoryBinding?: RepositoryBinding
   repositoryAdapter?: RepositoryAdapter
+  repositoryAdapters?: RepositoryAdapter[]
+  repositoryCatalog?: WorkspaceRepository[]
   wecom?: { botId: string; secret: string; wsUrl: string }
 }
 export interface FeishuBot { cli: string; appId: string; brand: 'feishu' | 'lark'; botId: string; name: string }
@@ -117,7 +122,18 @@ export async function resolveDeployment(machine: Machine, github: unknown, probe
 /** Resolve a non-GitHub repository without requiring a GitHub CLI account. GitHub keeps the legacy resolver above. */
 export function resolveRepositoryDeployment(machine: Machine, value: unknown): Deployment {
   const config = RepositoryConfigSchema.parse(value)
-  if (config.provider === 'github') throw new SetupError('repositoryProviderInvalid')
+  if (config.provider === 'github' && config.mode !== 'workspace') throw new SetupError('repositoryProviderInvalid')
+  if (config.mode === 'workspace') {
+    if (!config.workspaceRoot) throw new SetupError('repositoryWorkspaceUnset')
+    let catalog: WorkspaceRepository[]
+    try { catalog = discoverWorkspaceRepositories(config.workspaceRoot) }
+    catch (error) { throw new SetupError('repositoryWorkspaceEmpty', { output: error instanceof Error ? error.message : String(error) }) }
+    if (!catalog.length) throw new SetupError('repositoryWorkspaceEmpty')
+    const selected = selectWorkspaceRepository(catalog, '', config.defaultRepository)
+    const binding = selected.status === 'selected' ? selected.repository.binding : undefined
+    return { ...machine, repository: binding?.repository ?? '', github: { cli: '', login: '', noreply: '' },
+      ...(binding ? { repositoryBinding: { ...binding, defaultBranch: binding.defaultBranch ?? 'main' } } : {}), repositoryCatalog: catalog }
+  }
   if (!config.repository) throw new SetupError('repositoryUnset', { provider: config.provider })
   if (!config.token) throw new SetupError('repositoryTokenUnset', { provider: config.provider })
   return { ...machine, repository: config.repository, github: { cli: '', login: '', noreply: '' },

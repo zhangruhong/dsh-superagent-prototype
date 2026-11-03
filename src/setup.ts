@@ -15,6 +15,8 @@ export const SETUP_PROBLEMS = {
   repositoryUnreported: ['github', 'The agent GitHub CLI did not return {repository}.'],
   repositoryReadOnly: ['github', '@{account} cannot push to {repository}.'],
   repositoryProviderInvalid: ['deployment', 'The repository provider configuration cannot use GitHub here; keep GitHub in the GitHub Source.'],
+  repositoryWorkspaceUnset: ['deployment', 'The repository workspace directory is not set.'],
+  repositoryWorkspaceEmpty: ['deployment', 'The repository workspace directory contains no Git repositories.'],
   repositoryTokenUnset: ['deployment', 'The {provider} repository token is not set.'],
   feishuCliFailed: ['feishu', 'The bot lark-cli does not work.'],
   feishuNoApp: ['feishu', 'auth status of the bot lark-cli did not report the app.'],

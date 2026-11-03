@@ -16,6 +16,10 @@ export interface RepositoryBinding {
   host: string
   repository: string
   defaultBranch?: string
+  /** Absolute local checkout selected from workspace discovery; absent for legacy single-repository deployments. */
+  localPath?: string
+  /** Human-facing workspace alias, when the binding came from discovery. */
+  alias?: string
 }
 export interface ChangeRequestRef extends RepositoryBinding {
   kind: ChangeRequestKind

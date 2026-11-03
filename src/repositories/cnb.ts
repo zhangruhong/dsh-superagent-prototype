@@ -1,12 +1,15 @@
 import type { ChangeRequestRef, RepositoryBinding } from '../core/index.ts'
 import { UnsupportedRepositoryOperation, type ChangeRequest, type RepositoryAdapter, type RepositoryCapabilities, type RepositoryHealth } from './adapter.ts'
-import type { RepositoryConfig } from './config.ts'
+import { RepositoryConfigSchema, type RepositoryConfig, type RepositoryConfigInput } from './config.ts'
 
 /** Capability boundary for CNB; live operations remain explicit until the CNB API adapter is added. */
 export class CnbRepositoryAdapter implements RepositoryAdapter {
   readonly provider = 'cnb' as const
   readonly binding: RepositoryBinding
-  constructor(private readonly config: RepositoryConfig) {
+  private readonly config: RepositoryConfig
+  constructor(value: RepositoryConfigInput | RepositoryConfig) {
+    const config = RepositoryConfigSchema.parse(value)
+    this.config = config
     this.binding = { provider: 'cnb', host: config.host, repository: config.repository, defaultBranch: config.defaultBranch }
   }
   capabilities(): RepositoryCapabilities { return { readChangeRequest: false, comment: false, pipeline: false, claim: false, close: false } }

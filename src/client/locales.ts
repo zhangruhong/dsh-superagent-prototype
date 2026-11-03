@@ -746,6 +746,8 @@ const TEXT = {
   'setup.repositoryReadOnly': ['@{account} 没有 {repository} 的推送权限。', SETUP_PROBLEMS.repositoryReadOnly[1]],
   'setup.repositoryProviderInvalid': ['仓库提供方配置无效；GitHub 请继续配置 GitHub 来源。', SETUP_PROBLEMS.repositoryProviderInvalid[1]],
   'setup.repositoryTokenUnset': ['没有设置 {provider} 仓库令牌。', SETUP_PROBLEMS.repositoryTokenUnset[1]],
+  'setup.repositoryWorkspaceUnset': ['没有设置仓库工作区目录。', SETUP_PROBLEMS.repositoryWorkspaceUnset[1]],
+  'setup.repositoryWorkspaceEmpty': ['仓库工作区目录中没有发现 Git 仓库。', SETUP_PROBLEMS.repositoryWorkspaceEmpty[1]],
   'setup.feishuCliFailed': ['机器人的 lark-cli 不可用。', SETUP_PROBLEMS.feishuCliFailed[1]],
   'setup.feishuNoApp': ['机器人的 lark-cli 的 auth status 没有报告应用。', SETUP_PROBLEMS.feishuNoApp[1]],
   'setup.feishuBotNotReady': ['应用 {app} 的机器人身份状态是 {status}；用 lark-cli 配置应用密钥。', SETUP_PROBLEMS.feishuBotNotReady[1]],

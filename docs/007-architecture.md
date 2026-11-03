@@ -345,6 +345,7 @@ Some generic modules still refer directly to GitHub or Feishu:
 | `src/repositories/adapter.ts`, `config.ts`, `registry.ts` | Provider-neutral repository contract, configuration and adapter selection |
 | `src/repositories/gitlab.ts` | GitLab REST adapter for issues, merge requests, comments, pipelines and links |
 | `src/repositories/cnb.ts` | CNB capability-only adapter; unsupported live operations are typed and do not call the network |
+| `src/repositories/workspace.ts` | Recursive local Git repository discovery, remote metadata parsing and deterministic workspace target selection |
 | `src/app/http.ts` | The `/orchestrator/api` routes: the same-origin check, request limits and one status per kind of failure |
 | `src/app/api.ts` | `Api`, every route with its parameters, query, body and response, and the filters of the lists; it imports only types, so the panel bundles it |
 | `src/app/views/text.ts` | The two forms of a view's text: `preview`, plain text on one line, and `markdown` without HTML; `plain` and `readable` |
@@ -417,6 +418,7 @@ Some generic modules still refer directly to GitHub or Feishu:
 | `tests/commands.spec.ts` | CLI calls as the deployment's accounts, the Channels' answers, and repository-scoped GitHub calls |
 | `tests/ids.spec.ts`, `tests/repositories.spec.ts`, `tests/provider-setup.spec.ts` | Provider-neutral identities, GitLab/CNB adapters and GitLab-only setup |
 | `tests/wecom.spec.ts`, `tests/executor-provider.spec.ts` | WeCom trigger/connection/channel behavior and structured change-request reports |
+| `tests/workspace-repositories.spec.ts` | Recursive repository discovery, skip rules, remote parsing and deterministic selection |
 | `tests/feishu-read.spec.ts`, `tests/github-read.spec.ts` | Feishu and GitHub reads |
 | `tests/admission-context.spec.ts`, `tests/feishu-image.spec.ts` | The Thread window of assessments, and Feishu image reads |
 | `tests/assessment.spec.ts` | What the MasterAssessor keeps per Eval, and when it lets go |

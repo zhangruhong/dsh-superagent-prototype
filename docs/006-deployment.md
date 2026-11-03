@@ -5,7 +5,7 @@ Use this guide to install, configure and operate dsh-superagent. It covers accou
 ## What runs
 
 - **A dedicated DeepSeek Harness profile**, called `superagent` in this guide. Create it from the Web profile template. It loads the bundle and serves its panel on `127.0.0.1`. Keep it separate from the profile you work in: the plugin changes process-wide `PATH` and git settings, and its process needs independent restarts and upgrades.
-- **A configured repository provider.** The first provider slice supports one GitLab project; existing GitHub configuration remains supported. CNB configuration is capability-only until its live adapter is implemented.
+- **A configured repository provider.** GitHub remains supported, and the Repository Source supports one GitLab/CNB project or a recursively discovered local workspace. CNB configuration is capability-only until its live adapter is implemented.
 - **Optional:** a Feishu bot or an Enterprise WeChat intelligent robot for chat requests.
 
 Plugin configuration holds the state directory and machine limits. Use the panel for everything else: Sources for the repository and accounts, Policy for allowed lists, and Execution for worker directories and commands.
@@ -144,7 +144,7 @@ Check dsh-superagent: run `scripts/dsh-superagent --profile superagent status` i
 
 Setup must succeed before polling or work starts. Overview lists missing requirements and links to their settings. A settings change runs setup again. If you fix something outside the application, such as CLI authentication, choose **Check again**.
 
-1. **Sources.** Keep the GitHub Source configuration for GitHub, or enable the Repository Source and choose `gitlab` with `host`, `repository`, token and default branch. Enable WeCom and enter the intelligent robot ID and Secret; in a group, users must `@` the robot. For Feishu, set the bot CLI, chats, each chat's receive-all or mentions-only mode, and whether to receive direct messages.
+1. **Sources.** Keep the GitHub Source configuration for a single GitHub repository, or enable the Repository Source and choose `single` with `provider`, `host`, `repository`, token and default branch. To use multiple local repositories, choose `workspace` and set `workspaceRoot`; add a token when GitLab/CNB change-request operations are needed. dsh-superagent recursively discovers Git repositories below that directory and skips dependencies, build output, caches and symbolic links. A task may name a discovered alias or path; when the text matches one repository it is selected automatically, and an ambiguous request is refused for clarification. Enable WeCom and enter the intelligent robot ID and Secret; in a group, users must `@` the robot. For Feishu, set the bot CLI, chats, each chat's receive-all or mentions-only mode, and whether to receive direct messages.
 2. **Policy.** The two example rules can be edited or removed. Under **On each Source**, add the GitHub accounts and Feishu users who may ask for work; until a list has someone, no request can become a Ticket. With Feishu, a chat can be chosen to sync the list from, at startup and on **Sync now**.
 3. **Execution.** The directory root and a prepare command. To give each Ticket a checkout of the repository:
 
@@ -226,7 +226,7 @@ The process environment that setup writes:
 
 For WeCom, progress and MR links are delivered to the originating group through the intelligent robot's long connection. For CNB, unsupported live operations are reported explicitly and do not call the CNB API.
 
-When the Repository Source is enabled, worker prompts and prepare commands also receive `DSH_SUPERAGENT_REPOSITORY_PROVIDER`, `DSH_SUPERAGENT_REPOSITORY_HOST`, `DSH_SUPERAGENT_REPOSITORY`, and `DSH_SUPERAGENT_REPOSITORY_DEFAULT_BRANCH`. These values identify the selected provider and project; they never contain the access token.
+When the Repository Source is enabled, worker prompts and prepare commands also receive `DSH_SUPERAGENT_REPOSITORY_PROVIDER`, `DSH_SUPERAGENT_REPOSITORY_HOST`, `DSH_SUPERAGENT_REPOSITORY`, and `DSH_SUPERAGENT_REPOSITORY_DEFAULT_BRANCH`. In workspace mode these values identify the repository selected for the Ticket; they never contain the access token.
 
 A file in `worker-bin` or `worker-gitconfig` that dsh-superagent did not write stops setup. A Ticket directory inside a git repository whose own configuration adds credentials fails the Ticket.
 

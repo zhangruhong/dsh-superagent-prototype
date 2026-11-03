@@ -3,7 +3,8 @@ import type { Context } from '@deepseek-ai/cordis'
 import { UserError } from '../core/index.ts'
 import { SETUP_FIELDS, resolveDeployment, resolveFeishuBot, resolveRepositoryDeployment, WecomBotSchema, workerProbe, type Deployment, type Machine } from '../deployment.ts'
 import { RepositoryConfigSchema } from '../repositories/config.ts'
-import { createRepositoryAdapter } from '../repositories/registry.ts'
+import { createRepositoryAdapter, createRepositoryAdapterForBinding } from '../repositories/registry.ts'
+import type { RepositoryAdapter } from '../repositories/adapter.ts'
 import { agentVariables, applyEnvironment, verifyEnvironment, withoutDirectory, workerBin, writeEnvironment } from '../infra/environment.ts'
 import type { Settings, SettingsBlock } from '../policy.ts'
 import { SetupError, type SetupProblem } from '../setup.ts'
@@ -95,8 +96,15 @@ export class Setup {
       ? WecomBotSchema.parse(wecomValue) : undefined
     // Keep an enabled but incomplete WeCom Source visible as `wecomUnset`; do not start a socket with empty credentials.
     const wecom = wecomValueParsed?.botId && wecomValueParsed.secret ? wecomValueParsed : undefined
-    const repositoryAdapter = repositoryValue && Object.keys(repositoryValue).length ? createRepositoryAdapter(repositoryValue) : undefined
-    const resolved = { ...deployment, ...(repositoryAdapter ? { repositoryAdapter } : {}), ...(feishu ? { feishu } : {}), ...(wecom ? { wecom } : {}) }
+    const repositoryConfig = repositoryValue && Object.keys(repositoryValue).length ? RepositoryConfigSchema.parse(repositoryValue) : undefined
+    const repositoryAdapters: RepositoryAdapter[] = repositoryConfig?.mode === 'workspace'
+      ? (deployment.repositoryCatalog ?? []).flatMap(candidate => candidate.binding && candidate.binding.provider !== 'github'
+        ? [createRepositoryAdapterForBinding(repositoryConfig, candidate.binding)] : []) : []
+    const repositoryAdapter = repositoryConfig?.mode === 'workspace'
+      ? repositoryAdapters.find(adapter => adapter.binding.provider === deployment.repositoryBinding?.provider && adapter.binding.host === deployment.repositoryBinding.host
+        && adapter.binding.repository === deployment.repositoryBinding.repository)
+      : repositoryConfig ? createRepositoryAdapter(repositoryConfig) : undefined
+    const resolved = { ...deployment, ...(repositoryAdapter ? { repositoryAdapter } : {}), ...(repositoryAdapters.length ? { repositoryAdapters } : {}), ...(feishu ? { feishu } : {}), ...(wecom ? { wecom } : {}) }
     const machineProblem = (error: unknown): never => {
       if (error instanceof SetupError) throw error
       throw new SetupError('environmentFailed', { output: error instanceof Error ? error.message : String(error) })

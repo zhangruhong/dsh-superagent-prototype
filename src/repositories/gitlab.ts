@@ -1,7 +1,7 @@
 import { UnsupportedRepositoryOperation, type ChangeRequest, type RepositoryAdapter, type RepositoryCapabilities, type RepositoryHealth } from './adapter.ts'
 import { changeRequestPath } from './adapter.ts'
 import { changeRequestKey, type ChangeRequestRef, type RepositoryBinding } from '../core/index.ts'
-import type { RepositoryConfig } from './config.ts'
+import { RepositoryConfigSchema, type RepositoryConfig, type RepositoryConfigInput } from './config.ts'
 
 export interface GitlabTransport {
   request(path: string, init?: { method?: string; body?: Record<string, unknown> }): Promise<unknown>
@@ -11,7 +11,8 @@ const Item = (value: unknown): Record<string, unknown> => {
   return value as Record<string, unknown>
 }
 const text = (value: unknown): string => typeof value === 'string' ? value : ''
-export function createGitlabTransport(config: RepositoryConfig, fetcher: typeof fetch = fetch): GitlabTransport {
+export function createGitlabTransport(value: RepositoryConfigInput | RepositoryConfig, fetcher: typeof fetch = fetch): GitlabTransport {
+  const config = RepositoryConfigSchema.parse(value)
   const base = `https://${config.host}/api/v4`
   return {
     async request(path, init = {}) {
@@ -30,9 +31,14 @@ export class GitlabRepositoryAdapter implements RepositoryAdapter {
   readonly provider = 'gitlab' as const
   readonly binding: RepositoryBinding
   private readonly caps: RepositoryCapabilities = { readChangeRequest: true, comment: true, pipeline: true, claim: true, close: true }
-  constructor(private readonly config: RepositoryConfig, private readonly transport = createGitlabTransport(config)) {
+  private readonly transport: GitlabTransport
+  constructor(value: RepositoryConfigInput | RepositoryConfig, transport?: GitlabTransport) {
+    const config = RepositoryConfigSchema.parse(value)
+    this.config = config
+    this.transport = transport ?? createGitlabTransport(config)
     this.binding = { provider: 'gitlab', host: config.host, repository: config.repository, defaultBranch: config.defaultBranch }
   }
+  private readonly config: RepositoryConfig
   capabilities(): RepositoryCapabilities { return this.caps }
   async health(): Promise<RepositoryHealth> {
     try { await this.transport.request(''); return { state: 'ready', detail: `GitLab ${this.config.host}/${this.config.repository}` } }

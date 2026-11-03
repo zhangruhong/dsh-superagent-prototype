@@ -55,6 +55,13 @@ export function transient(error: unknown): boolean {
 }
 /** Appends a stable 12-character ticket ID suffix to a validated English worktree name. */
 const ticketWorktreeName = (name: string, id: string): string => `${WorktreeNameSchema.parse(name)}-${id.slice(0, 12)}`
+/** Git command used to materialize a discovered repository as the Ticket's detached worktree. */
+export function repositoryWorktreeCommand(ticket: Pick<Ticket, 'repository' | 'execution'>): string[] | undefined {
+  const binding = ticket.repository
+  const directory = ticket.execution?.directory
+  if (!binding?.localPath || !directory) return undefined
+  return ['git', '-C', binding.localPath, 'worktree', 'add', '--detach', directory, binding.defaultBranch ?? 'main']
+}
 /** Host dependencies used by `DshExecutor`. */
 export interface ExecutorHost {
   /** DSH Cordis context: agents and their events, and the subprocess service used to run prepare commands. */
@@ -247,6 +254,18 @@ export class DshExecutor implements Executor {
   private async prepareDirectory(ticket: Ticket): Promise<void> {
     const directory = ticket.execution?.directory ?? ''
     await mkdir(dirname(directory), { recursive: true })
+    const binding = ticket.repository
+    const source = binding?.localPath
+    if (source) {
+      let existing = false
+      try { existing = (await stat(directory)).isDirectory() } catch { /* Worktree has not been created yet. */ }
+      if (!existing) {
+        await runAsWorker(this.host.context.subprocess, repositoryWorktreeCommand(ticket)!, dirname(directory),
+          AbortSignal.any([this.host.lifetime, AbortSignal.timeout(PREPARE_TIMEOUT_MS)])).catch((error: unknown) => {
+            throw new PrepareFailed(`The repository worktree could not be created: ${error instanceof Error ? error.message : String(error)}`)
+          })
+      }
+    }
     const command = this.host.store.settings().executor.prepare.trim()
     const env = Object.fromEntries(this.host.environment(ticket).map(variable => [variable.key, variable.value]))
     // Enforce a timeout so a hung prepare command (such as on a credential prompt) fails the ticket instead of holding a worker slot indefinitely.

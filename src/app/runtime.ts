@@ -38,6 +38,7 @@ import { HealthBoard } from '../infra/health.ts'
 import { Outbox } from './outbox.ts'
 import { Passes } from './passes.ts'
 import { Setup } from './setup.ts'
+import { selectWorkspaceRepository } from '../repositories/workspace.ts'
 import { feishuSettings } from '../sources/feishu.ts'
 import { health, type Health, type SourceContext, type SourceHost } from '../sources/host.ts'
 import { Sessions } from './sessions.ts'
@@ -112,7 +113,8 @@ export class Runtime extends Service implements SourceHost {
           .catch(() => { /* sync() records its failure in health. */ })
         return () => {}
       })
-      const links: LinkHost = { store, links: this.sourceLinks, commands, sources, lifetime: this.lifetime }
+      const links: LinkHost = { store, links: this.sourceLinks, commands, sources, lifetime: this.lifetime,
+        repositoryCatalog: () => setup.deployment.repositoryCatalog }
       const link = (trigger: Trigger, signal?: AbortSignal) => sourceLink(links, trigger, signal)
       const environment = (ticket: Ticket) => this.ticketEnvironment(ticket)
       const resources: ResourceHost = { store, pages: new TextCache(4_000_000), prompts, commands, masterId, context: ctx,
@@ -136,9 +138,20 @@ export class Runtime extends Service implements SourceHost {
       const policy = () => settingsPolicy(store.settings(), sources)
       const engine = this.engine = new Engine({ repo: store, scope: sources, policy, assessor, executor,
         outbox, prepareTicket: (ticket, outcome) => {
-          const prepared = executor.prepare(ticket, outcome)
-          const binding = setup.deployment.repositoryBinding
-          return binding ? { ...prepared, repository: binding } : prepared
+          const deployment = setup.deployment
+          const configured = deployment.repositoryCatalog?.filter(item => item.binding) ?? []
+          let binding = deployment.repositoryBinding
+          if (configured.length) {
+            const trigger = store.triggers.get(ticket.origin.triggerId)
+            const selected = selectWorkspaceRepository(configured, outcome.repository ?? trigger?.text ?? '', binding?.alias ?? '')
+            if (selected.status !== 'selected' || !selected.repository.binding) {
+              const names = selected.status === 'ambiguous' ? selected.repositories.map(item => item.alias || item.relativePath).join(', ') : 'no repository matched'
+              throw new Error(`Workspace repository selection is ambiguous: ${names}`)
+            }
+            binding = selected.repository.binding
+          }
+          const bound = binding ? { ...ticket, repository: binding } : ticket
+          return executor.prepare(bound, outcome)
         }, emit: event => {
           // Notify the main Session only about domain events it did not initiate itself.
           const notice = this.quiet ? undefined : eventNotice(event, id => store.tickets.get(id))
@@ -166,6 +179,8 @@ export class Runtime extends Service implements SourceHost {
       this.toolHost = { context: ctx, engine, store, prompts, sessions, settings: this.settings, assessor, resources,
         get github() { return runtime.context({ kind: 'github', health: ['github'] }) },
         get repository() { return runtime.setup.deployment.repositoryAdapter },
+        repositoryFor: binding => runtime.setup.deployment.repositoryAdapters?.find(adapter => adapter.provider === binding.provider
+          && adapter.binding.host.toLowerCase() === binding.host.toLowerCase() && adapter.binding.repository === binding.repository),
         requestPass: () => { passes.request() }, sendReplies: () => outbox.sent(),
         quietly: run => { this.quiet++; try { return run() } finally { this.quiet-- } } }
       this.ready = this.initialize()

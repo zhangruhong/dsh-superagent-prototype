@@ -8,6 +8,7 @@ import { triggerMessage } from '../executor/dsh.ts'
 import { relatedTickets, ticketCard, triggerCard } from './cards.ts'
 import type { Store } from './store.ts'
 import type { TextCache } from './cache.ts'
+import type { WorkspaceRepository } from '../repositories/workspace.ts'
 
 export interface LinkHost {
   readonly store: Pick<Store, 'settings' | 'triggers' | 'threads' | 'tickets'>
@@ -15,6 +16,7 @@ export interface LinkHost {
   readonly commands: Commands
   readonly sources: SourceRegistry
   readonly lifetime: AbortSignal
+  readonly repositoryCatalog?: () => readonly WorkspaceRepository[] | undefined
 }
 
 /** Resolves and caches a trigger's external message URL, falling back to a readable resource path when lookup fails. */
@@ -66,6 +68,8 @@ export async function candidateCard(host: LinkHost, candidate: Candidate) {
     mode: settings.eval.mode, ...others.length ? { batch: others.map(trigger => triggerCard(trigger)) } : {},
     ...handedBack.length ? { handed_back: handedBack } : {}, ...relatedTickets(candidate.tickets),
     ...(delivered.length ? { delivered_to: delivered } : {}), ...(referenced.length ? { referenced_tickets: referenced.map(ticketCard) } : {}),
+    ...(host.repositoryCatalog?.()?.length ? { repositories: host.repositoryCatalog()!.map(item => ({ alias: item.alias, path: item.relativePath,
+      provider: item.provider, host: item.host, repository: item.repository, default_branch: item.defaultBranch })) } : {}),
     next_action: candidate.strength === 'explicit' ? 'Route it with orchestrator_route as dispatch says: accept, attach, stop or ignore.'
       : 'Ignore it with orchestrator_route if the card shows it touches no enabled rule; else assess it with orchestrator_eval, orchestrator_eval_read, then orchestrator_eval_decide.' }
 }

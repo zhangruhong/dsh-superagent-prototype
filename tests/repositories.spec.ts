@@ -66,3 +66,12 @@ it('publishes provider-neutral repository variables without exposing its token',
     DSH_SUPERAGENT_REPOSITORY: 'acme/app', DSH_SUPERAGENT_REPOSITORY_DEFAULT_BRANCH: 'main' })
   expect(JSON.stringify(values)).not.toContain('secret')
 })
+
+it('uses the Ticket repository binding for worker environment values', () => {
+  const config = RepositoryConfigSchema.parse({ provider: 'gitlab', host: 'gitlab.example.com', repository: 'default/app', token: 'secret' })
+  const values = repositoryKind.environment!.values({ deployment: {
+    repository: 'default/app', repositoryBinding: { provider: 'gitlab', host: 'gitlab.example.com', repository: 'default/app', defaultBranch: 'main' },
+  } as never, config, ticket: { repository: { provider: 'cnb', host: 'cnb.cool', repository: 'team/selected', defaultBranch: 'trunk' } } })
+  expect(values).toMatchObject({ DSH_SUPERAGENT_REPOSITORY_PROVIDER: 'cnb', DSH_SUPERAGENT_REPOSITORY_HOST: 'cnb.cool',
+    DSH_SUPERAGENT_REPOSITORY: 'team/selected', DSH_SUPERAGENT_REPOSITORY_DEFAULT_BRANCH: 'trunk' })
+})

@@ -1,6 +1,6 @@
 /** Executor Session tools for reading ticket context, acknowledging requests, managing threads, handing back out-of-scope triggers, and reporting status. */
 import { z } from 'zod'
-import { liveTicket, type EngineForExecutor, type Ticket } from '../../core/index.ts'
+import { liveTicket, type EngineForExecutor, type RepositoryBinding, type Ticket } from '../../core/index.ts'
 import { IM_WORDS } from '../../infra/text.ts'
 import { claimPull, readPull } from '../../sources/github-pull.ts'
 import type { SourceContext } from '../../sources/host.ts'
@@ -19,6 +19,7 @@ export interface ExecutorToolsHost {
   /** GitHub Source context whose pull-request rules govern claiming a reported PR. */
   readonly github: SourceContext
   readonly repository?: RepositoryAdapter
+  readonly repositoryFor?: (binding: RepositoryBinding) => RepositoryAdapter | undefined
   sendReplies(): Promise<void>
 }
 
@@ -100,7 +101,7 @@ export function executorTools(host: ExecutorToolsHost, ticket: Ticket): Tool[] {
         const changeRequest = args.change_request
         let summary = args.summary
         if (changeRequest) {
-          const adapter = host.repository
+          const adapter = host.repositoryFor?.(changeRequest) ?? host.repository
           if (!adapter || adapter.provider !== changeRequest.provider) throw new Error(`No ${changeRequest.provider} repository adapter is configured`)
           if (adapter.binding.host.toLowerCase() !== changeRequest.host.toLowerCase() || adapter.binding.repository !== changeRequest.repository) throw new Error('Reported change request is outside the configured repository')
           const ref = { ...changeRequest, url: adapter.link(changeRequest) }
