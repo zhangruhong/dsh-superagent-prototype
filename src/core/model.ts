@@ -8,6 +8,21 @@ export interface ThreadRef { source: string; id: string }
 /** Write-only address on a thread; the address format belongs to the source. */
 export interface ChannelRef { source: string; thread: string; address: Record<string, string> }
 
+/** Repository hosts are independent from the channel that delivered a Trigger. */
+export type RepositoryProvider = 'github' | 'gitlab' | 'cnb'
+export type ChangeRequestKind = 'issue' | 'pull-request' | 'merge-request'
+export interface RepositoryBinding {
+  provider: RepositoryProvider
+  host: string
+  repository: string
+  defaultBranch?: string
+}
+export interface ChangeRequestRef extends RepositoryBinding {
+  kind: ChangeRequestKind
+  iid: number
+  url?: string
+}
+
 /** Stable key of a thread across the whole domain. */
 export const threadKey = (ref: ThreadRef): string => `${ref.source}:${ref.id}`
 /**
@@ -281,6 +296,8 @@ export interface Ticket {
   mandate: Mandate
   /** The Channels of the messages it was accepted from, which its replies go to. */
   channels: ChannelRef[]
+  /** Immutable repository target selected when the ticket was created; old tickets may omit it. */
+  repository?: RepositoryBinding
   /** When, by whom, and how the ticket ended, with a person's or the host's reason beyond the outcome; an open ticket has none. */
   ended?: { at: string; by: TicketEndBy; outcome: TicketOutcome; reason?: string }
   /** Open question for a person; cleared by the executor or when the ticket ends. */
