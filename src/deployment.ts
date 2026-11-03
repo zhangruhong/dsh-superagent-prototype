@@ -51,7 +51,7 @@ export const GithubAccountsSchema = z.object({
 export const FeishuBotSchema = z.object({ cli: z.string().trim().default('') })
 export const WecomBotSchema = z.object({
   botId: z.string().trim().max(128).default(''), secret: z.string().trim().max(512).default(''),
-  wsUrl: z.url().default('wss://openws.work.weixin.qq.com'),
+  wsUrl: z.string().trim().refine(value => value === '' || /^wss?:\/\//i.test(value), 'WebSocket URL').transform(value => value || 'wss://openws.work.weixin.qq.com').default('wss://openws.work.weixin.qq.com'),
 }).strict()
 /** Source configuration keys that affect deployment setup and trigger a restart when changed. */
 export const SETUP_FIELDS: Readonly<Record<string, readonly string[]>> = { github: Object.keys(GithubAccountsSchema.shape), feishu: Object.keys(FeishuBotSchema.shape), repository: Object.keys(RepositoryConfigSchema.shape), wecom: Object.keys(WecomBotSchema.shape) }

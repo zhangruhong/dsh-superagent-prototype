@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { resolveRepositoryDeployment } from '../src/deployment.ts'
+import { resolveRepositoryDeployment, WecomBotSchema } from '../src/deployment.ts'
 import { testMachine } from './fixtures/deployment.ts'
 
 it('resolves GitLab without a GitHub CLI account', () => {
@@ -10,4 +10,8 @@ it('resolves GitLab without a GitHub CLI account', () => {
 it('resolves CNB as a capability-only repository', () => {
   expect(resolveRepositoryDeployment(testMachine(), { provider: 'cnb', host: 'cnb.cool', repository: 'team/app', token: 'cnb-test' }).repositoryBinding)
     .toMatchObject({ provider: 'cnb', host: 'cnb.cool', repository: 'team/app' })
+})
+
+it('normalizes an empty WeCom WebSocket URL and leaves incomplete credentials unset', () => {
+  expect(WecomBotSchema.parse({ wsUrl: '' })).toMatchObject({ botId: '', secret: '', wsUrl: 'wss://openws.work.weixin.qq.com' })
 })

@@ -91,8 +91,10 @@ export class Setup {
       return undefined
     })
     const wecomValue = settings.sources.wecom?.config
-    const wecom = settings.sources.wecom?.enabled !== false && wecomValue && Object.keys(wecomValue).length
+    const wecomValueParsed = settings.sources.wecom?.enabled !== false && wecomValue && Object.keys(wecomValue).length
       ? WecomBotSchema.parse(wecomValue) : undefined
+    // Keep an enabled but incomplete WeCom Source visible as `wecomUnset`; do not start a socket with empty credentials.
+    const wecom = wecomValueParsed?.botId && wecomValueParsed.secret ? wecomValueParsed : undefined
     const repositoryAdapter = repositoryValue && Object.keys(repositoryValue).length ? createRepositoryAdapter(repositoryValue) : undefined
     const resolved = { ...deployment, ...(repositoryAdapter ? { repositoryAdapter } : {}), ...(feishu ? { feishu } : {}), ...(wecom ? { wecom } : {}) }
     const machineProblem = (error: unknown): never => {
