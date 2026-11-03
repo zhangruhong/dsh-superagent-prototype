@@ -8,6 +8,7 @@ import { z } from 'zod'
 import type { SubprocessRuntime } from '@deepseek-ai/dsh-subprocess'
 import { runAsWorker, sameDirectory, withoutDirectory, workerBin } from './infra/environment.ts'
 import { SetupError } from './setup.ts'
+import { RepositoryConfigSchema, type RepositoryConfig } from './repositories/config.ts'
 
 const reason = (error: unknown): string => error instanceof Error ? error.message : String(error)
 const absolute = (description: string) => s.string().pattern(/^\//).description(`${description} Absolute path.`)
@@ -47,13 +48,19 @@ export const GithubAccountsSchema = z.object({
   cli: z.string().trim().default(''),
 })
 export const FeishuBotSchema = z.object({ cli: z.string().trim().default('') })
+export const WecomBotSchema = z.object({
+  botId: z.string().trim().min(1).max(128), secret: z.string().trim().min(1).max(512),
+  wsUrl: z.url().default('wss://openws.work.weixin.qq.com'),
+}).strict()
 /** Source configuration keys that affect deployment setup and trigger a restart when changed. */
-export const SETUP_FIELDS: Readonly<Record<string, readonly string[]>> = { github: Object.keys(GithubAccountsSchema.shape), feishu: Object.keys(FeishuBotSchema.shape) }
+export const SETUP_FIELDS: Readonly<Record<string, readonly string[]>> = { github: Object.keys(GithubAccountsSchema.shape), feishu: Object.keys(FeishuBotSchema.shape), repository: Object.keys(RepositoryConfigSchema.shape), wecom: Object.keys(WecomBotSchema.shape) }
 
 export interface Deployment extends Machine {
   repository: string
   github: { cli: string; login: string; noreply: string }
   feishu?: FeishuBot
+  repositoryBinding?: { provider: RepositoryConfig['provider']; host: string; repository: string; defaultBranch: string }
+  wecom?: { botId: string; secret: string; wsUrl: string }
 }
 export interface FeishuBot { cli: string; appId: string; brand: 'feishu' | 'lark'; botId: string; name: string }
 
@@ -103,6 +110,14 @@ export async function resolveDeployment(machine: Machine, github: unknown, probe
   const repository = access.name
   if (access.push !== true) throw new SetupError('repositoryReadOnly', { account: agent.login, repository })
   return { ...machine, repository, github: { cli, login: agent.login, noreply: `${agent.id}+${agent.login}@users.noreply.github.com` } }
+}
+
+/** Resolve a non-GitHub repository without requiring a GitHub CLI account. GitHub keeps the legacy resolver above. */
+export function resolveRepositoryDeployment(machine: Machine, value: unknown): Deployment {
+  const config = RepositoryConfigSchema.parse(value)
+  if (config.provider === 'github') throw new SetupError('repositoryProviderInvalid')
+  return { ...machine, repository: config.repository, github: { cli: '', login: '', noreply: '' },
+    repositoryBinding: { provider: config.provider, host: config.host, repository: config.repository, defaultBranch: config.defaultBranch } }
 }
 
 const AuthStatus = z.object({ appId: z.string().regex(/^cli_[A-Za-z0-9]+$/), brand: z.enum(['feishu', 'lark']).default('feishu'), identities: z.object({ bot: z.object({ status: z.string() }) }) })
