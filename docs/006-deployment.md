@@ -4,7 +4,7 @@ Use this guide to install, configure and operate dsh-superagent. It covers accou
 
 ## What runs
 
-- **A dedicated DeepSeek Harness profile**, called `superagent` in this guide. Create it from the Web profile template. It loads the bundle and serves its panel on `127.0.0.1`. Keep it separate from the profile you work in: the plugin changes process-wide `PATH` and git settings, and its process needs independent restarts and upgrades.
+- **A dedicated DeepSeek Harness profile**, called `superagent` in the Web/CLI flow below. It loads the bundle and serves its panel on `127.0.0.1`. The same bundle can be installed into the Harness Desktop profile; Desktop uses the same client plugin contract and runs the backend in its local Host. Keep it separate from the profile you work in: the plugin changes process-wide `PATH` and git settings, and its process needs independent restarts and upgrades.
 - **A configured repository provider.** GitHub remains supported, and the Repository Source supports one GitLab/CNB project or a recursively discovered local workspace. CNB configuration is capability-only until its live adapter is implemented.
 - **Optional:** a Feishu bot or an Enterprise WeChat intelligent robot for chat requests.
 
@@ -20,7 +20,7 @@ Both presets run with `danger-full-access` as the operator's OS user and read me
 
 ## Prerequisites
 
-- Node.js 22.19+ or 24+, pnpm, git 2.32+, Python 3.8+ and tmux
+- Node.js 22.19+ or 24+, pnpm, git 2.32+, Python 3.8+ and tmux for the Web/CLI flow. Desktop supplies its own Node runtime; the machine still needs git and the provider CLIs used by the configured Sources.
 - GitHub CLI (`gh`) 2.48 or later only when using the GitHub Source. GitLab uses the provider REST adapter; self-managed GitLab hosts are supported. To create a checkout per Ticket, keep a local clone from which the prepare command can add worktrees. Install `git-lfs` if that repository uses Git LFS.
 - A model provider configured for DeepSeek Harness. dsh-superagent uses the profile's default model unless the Eval or Execution settings name another.
 - For Feishu: `lark-cli` (tested with 1.0.90) and a Feishu or Lark app with a bot
@@ -83,6 +83,21 @@ dsh plugin --profile superagent add "link:$PWD"
 The pinned version above is public; other versions must satisfy `engines.dsh` in `package.json`.
 
 The fourth command creates `~/.dsh/profiles/superagent` from the DeepSeek Harness Web template. The fifth installs this bundle. Set `DSH_HOME` to relocate the default `~/.dsh` directory.
+
+### Install into Harness Desktop
+
+The package manifest deliberately keeps `dsh.client.platform` as `web`: Harness Desktop loads the shared Web client bundle, so changing that value to `desktop` would make the plugin fail the standard client-module contract. To install the bundle into Desktop:
+
+1. Launch Desktop once so it creates and initializes its `desktop` profile, then quit Desktop.
+2. Use the `dsh` command installed with Desktop to install the local bundle:
+
+   ```powershell
+   dsh plugin --profile desktop add "link:C:\path\to\dsh-superagent-prototype"
+   ```
+
+3. Reopen Desktop and enable dsh-superagent from the Plugins page.
+
+Desktop owns its profile and bundled runtime. Do not mix the Desktop profile's packages with an npm-installed Web/CLI profile. On Windows, the plugin uses PowerShell for the configured Executor `prepare` command and writes `.cmd` command shims; on macOS and Linux it uses `sh` and POSIX shims.
 
 Run the profile-creation command only for a new installation. If the profile already exists, that command replaces it and deletes its `cordis.patch.yml`, including machine configuration. Do not use it for upgrades.
 
@@ -151,6 +166,12 @@ Setup must succeed before polling or work starts. Overview lists missing require
    ```sh
    git -C /home/me/src/widgets fetch --no-tags "https://github.com/$DSH_SUPERAGENT_GITHUB_REPOSITORY.git" "${DSH_SUPERAGENT_GITHUB_PR_HEAD:-HEAD}:refs/dsh-superagent/$DSH_SUPERAGENT_TICKET" &&
    git -C /home/me/src/widgets worktree add -b "agent/$DSH_SUPERAGENT_NAME" "$DSH_SUPERAGENT_DIR" "refs/dsh-superagent/$DSH_SUPERAGENT_TICKET"
+   ```
+
+   On Windows Desktop, the same field is run by PowerShell, so use PowerShell environment syntax:
+
+   ```powershell
+   git -C C:\work\widgets worktree add -b "agent/$env:DSH_SUPERAGENT_NAME" $env:DSH_SUPERAGENT_DIR
    ```
 
    List personal CLIs, such as one signed in to your own account, as blocked commands.
