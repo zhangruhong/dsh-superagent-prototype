@@ -133,7 +133,10 @@ export function resolveRepositoryDeployment(machine: Machine, value: unknown): D
       ...(binding ? { repositoryBinding: { ...binding, defaultBranch: binding.defaultBranch ?? 'main' } } : {}), repositoryCatalog: catalog }
   }
   if (!config.repository) throw new SetupError('repositoryUnset', { provider: config.provider })
-  if (!config.token) throw new SetupError('repositoryTokenUnset', { provider: config.provider })
+  // CNB is currently a capability-only adapter and does not make API calls, so its
+  // token is optional until live CNB operations are implemented. GitLab's REST
+  // adapter uses the token for every request and must reject an empty value here.
+  if (config.provider === 'gitlab' && !config.token) throw new SetupError('repositoryTokenUnset', { provider: config.provider })
   return { ...machine, repository: config.repository, github: { cli: '', login: '', noreply: '' },
     repositoryBinding: { provider: config.provider, host: config.host, repository: config.repository, defaultBranch: config.defaultBranch } }
 }

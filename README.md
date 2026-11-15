@@ -14,10 +14,10 @@ After a release is published, install the package directly into the profile that
 
 ```sh
 # Web/CLI profile
-dsh plugin --profile superagent add dsh-superagent@0.2.2
+dsh plugin --profile superagent add dsh-superagent@0.2.3
 
 # Harness Desktop profile
-dsh plugin --profile desktop add dsh-superagent@0.2.2
+dsh plugin --profile desktop add dsh-superagent@0.2.3
 ```
 
 The package carries the compiled Host entry, client panel, bundle patch, prompts and skills. Harness resolves compatible DSH peer packages from its own runtime. The bundle automatically uses `<DSH_HOME>/state/dsh-superagent` for its database and worker files; change it in the profile patch only when you need another disk or backup policy. Restart the profile after installation, then configure the remaining `dsh-superagent` settings shown in [deployment](docs/006-deployment.md).
@@ -27,7 +27,7 @@ For a local build or a GitHub release asset:
 ```sh
 pnpm install --frozen-lockfile
 pnpm pack:plugin
-dsh plugin --profile desktop add ./.artifacts/dsh-superagent-0.2.2.tgz
+dsh plugin --profile desktop add ./.artifacts/dsh-superagent-0.2.3.tgz
 ```
 
 Use `link:<checkout>` only for development. A published npm package or `.tgz` release is the normal operator installation path.

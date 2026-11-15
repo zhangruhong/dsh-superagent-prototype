@@ -88,7 +88,7 @@ The normal installation is the published Harness bundle. Run this on a machine t
 ```sh
 npm install -g @deepseek-ai/dsh@0.2.1-rc.3
 dsh superagent --from-default-profile web --dump-config > /dev/null
-dsh plugin --profile superagent add dsh-superagent@0.2.2
+dsh plugin --profile superagent add dsh-superagent@0.2.3
 ```
 
 The package version is illustrative until the first release; replace it with the version you intend to pin. DSH checks the package's `engines.dsh` range against the running Host. The package is public only after it is published; before that, install the GitHub release tarball described below.
@@ -102,7 +102,7 @@ To install a build before publishing it, or to pin a GitHub release asset:
 ```sh
 pnpm install --frozen-lockfile
 pnpm pack:plugin
-dsh plugin --profile superagent add ./.artifacts/dsh-superagent-0.2.2.tgz
+dsh plugin --profile superagent add ./.artifacts/dsh-superagent-0.2.3.tgz
 ```
 
 Run `pnpm pack:plugin` from the checkout. It builds the bundle first and packs only the files listed by `package.json`; source TypeScript, tests and development dependencies are not part of the plugin archive. A GitHub release can attach the resulting `.tgz`, and users can pass its downloaded path to `dsh plugin ... add`.
@@ -117,10 +117,10 @@ The package manifest deliberately keeps `dsh.client.platform` as `web`: Harness 
 2. Use the `dsh` command installed with Desktop to install the published bundle:
 
    ```powershell
-   dsh plugin --profile desktop add dsh-superagent@0.2.2
+   dsh plugin --profile desktop add dsh-superagent@0.2.3
    ```
 
-   For a downloaded release asset, use `dsh plugin --profile desktop add C:\path\to\dsh-superagent-0.2.2.tgz` instead.
+   For a downloaded release asset, use `dsh plugin --profile desktop add C:\path\to\dsh-superagent-0.2.3.tgz` instead.
 
 3. Reopen Desktop and enable dsh-superagent from the Plugins page.
 
@@ -192,7 +192,7 @@ Check dsh-superagent: run `scripts/dsh-superagent --profile superagent status` i
 
 Setup must succeed before polling or work starts. Overview lists missing requirements and links to their settings. A settings change runs setup again. If you fix something outside the application, such as CLI authentication, choose **Check again**.
 
-1. **Sources.** Keep the GitHub Source configuration for a single GitHub repository, or enable the Repository Source and choose `single` with `provider`, `host`, `repository`, token and default branch. To use multiple local repositories, choose `workspace` and set `workspaceRoot`; add a token when GitLab/CNB change-request operations are needed. dsh-superagent recursively discovers Git repositories below that directory and skips dependencies, build output, caches and symbolic links. A task may name a discovered alias or path; when the text matches one repository it is selected automatically, and an ambiguous request is refused for clarification. Enable WeCom and enter the intelligent robot ID and Secret; in a group, users must `@` the robot. For Feishu, set the bot CLI, chats, each chat's receive-all or mentions-only mode, and whether to receive direct messages.
+1. **Sources.** Keep the GitHub Source configuration for a single GitHub repository, or use the Repository Source and choose `single` with `provider`, `host`, `repository` and default branch. A GitLab single-repository configuration requires a token; CNB is capability-only in this release and may leave it blank. To use multiple local repositories, choose `workspace` and set `workspaceRoot`; add a token when live GitLab change-request operations are needed. dsh-superagent recursively discovers Git repositories below that directory and skips dependencies, build output, caches and symbolic links. A task may name a discovered alias or path; when the text matches one repository it is selected automatically, and an ambiguous request is refused for clarification. Enable WeCom and enter the intelligent robot ID and Secret; in a group, users must `@` the robot. For Feishu, set the bot CLI, chats, each chat's receive-all or mentions-only mode, and whether to receive direct messages.
 2. **Policy.** The two example rules can be edited or removed. Under **On each Source**, add the GitHub accounts and Feishu users who may ask for work; until a list has someone, no request can become a Ticket. With Feishu, a chat can be chosen to sync the list from, at startup and on **Sync now**.
 3. **Execution.** The directory root and a prepare command. To give each Ticket a checkout of the repository:
 

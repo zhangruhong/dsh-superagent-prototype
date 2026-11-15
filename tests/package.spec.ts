@@ -11,7 +11,7 @@ describe('published Harness bundle', () => {
   it('has the metadata required for direct DSH installation', () => {
     expect(manifest.name).toBe('dsh-superagent')
     expect(manifest.private).toBe(false)
-    expect(manifest.version).toBe('0.2.2')
+    expect(manifest.version).toBe('0.2.3')
     expect(manifest.dsh).toMatchObject({ bundle: { patch: './cordis.patch.yml' }, manifestVersion: 1 })
     expect(manifest.engines?.dsh).toBeTruthy()
     expect(manifest.files).toEqual(expect.arrayContaining(['lib', 'cordis.patch.yml', 'README.md', 'docs/*.md', 'examples/*.yml', 'prompts', 'skills']))

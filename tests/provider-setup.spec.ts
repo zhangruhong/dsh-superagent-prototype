@@ -10,9 +10,14 @@ it('resolves GitLab without a GitHub CLI account', () => {
   expect(deployment).toMatchObject({ repository: 'acme/app', repositoryBinding: { provider: 'gitlab', host: 'gitlab.com', repository: 'acme/app' }, github: { cli: '', login: '' } })
 })
 
-it('resolves CNB as a capability-only repository', () => {
-  expect(resolveRepositoryDeployment(testMachine(), { provider: 'cnb', host: 'cnb.cool', repository: 'team/app', token: 'cnb-test' }).repositoryBinding)
+it('resolves CNB as a capability-only repository without a token', () => {
+  expect(resolveRepositoryDeployment(testMachine(), { provider: 'cnb', host: 'cnb.cool', repository: 'team/app' }).repositoryBinding)
     .toMatchObject({ provider: 'cnb', host: 'cnb.cool', repository: 'team/app' })
+})
+
+it('still requires a token for live GitLab operations', () => {
+  expect(() => resolveRepositoryDeployment(testMachine(), { provider: 'gitlab', host: 'gitlab.com', repository: 'acme/app' }))
+    .toThrow('The gitlab repository token is not set.')
 })
 
 it('normalizes an empty WeCom WebSocket URL and leaves incomplete credentials unset', () => {
