@@ -2,7 +2,7 @@
   "name": "dsh-superagent",
   "author": "DeepSeek Harness Team <team@dsh.dev>",
   "license": "MIT",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "private": false,
   "description": "A proactive agent for configured repositories and channels, packaged as a DSH (DeepSeek Harness) bundle.",
   "repository": {

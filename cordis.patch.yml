@@ -14,9 +14,10 @@
     - id: dsh-superagent-wecom
       name: dsh-superagent/wecom-watch
       disabled: true
+    # The Repository Source is visible by default so operators can configure GitLab/CNB
+    # without editing a profile patch. It remains unconfigured until a repository is saved.
     - id: dsh-superagent-repository
       name: dsh-superagent/repository
-      disabled: true
     # The agent preset of every Executor Session (WORKER_PRESET in src/app/sessions.ts); the main Session has its own, below.
     # It is DSH's `standard` preset with only what a worker needs, and a shell whose foreground command moves to a background job
     # after 5 seconds, so a long command does not hold back a person's message, which the Session takes at its next step. Left

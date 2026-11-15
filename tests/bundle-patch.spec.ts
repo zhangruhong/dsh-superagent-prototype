@@ -31,6 +31,7 @@ it('defines the worker preset Executor Sessions run under, with a shell that mov
   expect(rows[0]).toMatchObject({ id: 'dsh-superagent', config: { stateDir: { __jsExpr: "dshHomePath('state', 'dsh-superagent')" } } })
   expect(rows.map(row => row.id)).toEqual(['dsh-superagent', 'dsh-superagent-github', 'dsh-superagent-feishu', 'dsh-superagent-wecom', 'dsh-superagent-repository', 'dsh-superagent-worker-preset',
     'dsh-superagent-router-preset'])
+  expect(rows.find(row => row.id === 'dsh-superagent-repository')).not.toHaveProperty('disabled', true)
   const preset = presetOf(rows, WORKER_PRESET)
   expect(preset.id).toBe(WORKER_PRESET)
   const plugins = flat(preset.plugins)
