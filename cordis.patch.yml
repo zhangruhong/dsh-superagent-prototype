@@ -1,9 +1,10 @@
-# dsh-superagent bundle layer: inserts the plugins without configuration, and the agent presets its Sessions run under. The
-# profile supplies the `dsh-superagent` entry's stateDir (see docs/006-deployment.md and examples/profile.cordis.patch.yml); the plugin
-# refuses to start without stateDir.
+# dsh-superagent bundle layer: inserts the plugins and the agent presets its Sessions run under. The bundle defaults stateDir to
+# the Harness home so a freshly installed package can activate; a profile patch may replace it with another absolute directory.
 - insert:
     - id: dsh-superagent
       name: dsh-superagent
+      config:
+        stateDir: !!js dshHomePath('state', 'dsh-superagent')
     - id: dsh-superagent-github
       name: dsh-superagent/github-watch
     # Optional Feishu Source; requires configuring a bot CLI after enabling.

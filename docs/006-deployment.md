@@ -88,7 +88,7 @@ The normal installation is the published Harness bundle. Run this on a machine t
 ```sh
 npm install -g @deepseek-ai/dsh@0.2.1-rc.3
 dsh superagent --from-default-profile web --dump-config > /dev/null
-dsh plugin --profile superagent add dsh-superagent@0.2.0
+dsh plugin --profile superagent add dsh-superagent@0.2.1
 ```
 
 The package version is illustrative until the first release; replace it with the version you intend to pin. DSH checks the package's `engines.dsh` range against the running Host. The package is public only after it is published; before that, install the GitHub release tarball described below.
@@ -102,7 +102,7 @@ To install a build before publishing it, or to pin a GitHub release asset:
 ```sh
 pnpm install --frozen-lockfile
 pnpm pack:plugin
-dsh plugin --profile superagent add ./.artifacts/dsh-superagent-0.2.0.tgz
+dsh plugin --profile superagent add ./.artifacts/dsh-superagent-0.2.1.tgz
 ```
 
 Run `pnpm pack:plugin` from the checkout. It builds the bundle first and packs only the files listed by `package.json`; source TypeScript, tests and development dependencies are not part of the plugin archive. A GitHub release can attach the resulting `.tgz`, and users can pass its downloaded path to `dsh plugin ... add`.
@@ -117,10 +117,10 @@ The package manifest deliberately keeps `dsh.client.platform` as `web`: Harness 
 2. Use the `dsh` command installed with Desktop to install the published bundle:
 
    ```powershell
-   dsh plugin --profile desktop add dsh-superagent@0.2.0
+   dsh plugin --profile desktop add dsh-superagent@0.2.1
    ```
 
-   For a downloaded release asset, use `dsh plugin --profile desktop add C:\path\to\dsh-superagent-0.2.0.tgz` instead.
+   For a downloaded release asset, use `dsh plugin --profile desktop add C:\path\to\dsh-superagent-0.2.1.tgz` instead.
 
 3. Reopen Desktop and enable dsh-superagent from the Plugins page.
 
@@ -136,12 +136,12 @@ Copy [examples/profile.cordis.patch.yml](../examples/profile.cordis.patch.yml) t
 
 | Key | Required | Meaning |
 | --- | --- | --- |
-| `stateDir` | yes | Absolute path: the database, the lock, the command shims in `worker-bin`, the agent's git configuration and, by default, the Ticket directories in `work`. Back it up before upgrades |
+| `stateDir` | defaulted | Absolute path: the database, the lock, the command shims in `worker-bin`, the agent's git configuration and, by default, the Ticket directories in `work`. A new install defaults to `<DSH_HOME>/state/dsh-superagent`; back it up before upgrades |
 | `promptMaxChars`, `admissionContextMaxPages`, `admissionContextTimeoutMs` | no | The largest saved prompt configuration, and how many Thread pages one assessment reads within what time |
 
-After the first start, edit machine limits in **Settings → Deployment** or the DeepSeek Harness Plugin Manager. Changes apply without restart. `stateDir` cannot be changed there. Invalid values or unknown configuration keys prevent startup; the log identifies the key.
+After the first start, edit machine limits in **Settings → Deployment** or the DeepSeek Harness Plugin Manager. Changes apply without restart. To choose another state directory, add an explicit `stateDir` under the `dsh-superagent` entry in the profile's `cordis.patch.yml` before restarting. Invalid values or unknown configuration keys prevent startup; the log identifies the key.
 
-Both `stateDir` and the Execution directory accept native absolute paths, including `C:/agent/state`, `C:\agent\state`, Windows UNC paths, and `/home/agent/state`. Use a path valid on the machine running the Host. Relative paths, drive-relative paths such as `C:state`, and unexpanded `~` paths are rejected.
+Both the default `stateDir` and the Execution directory accept native absolute paths, including `C:/agent/state`, `C:\agent\state`, Windows UNC paths, and `/home/agent/state`. Use a path valid on the machine running the Host. Relative paths, drive-relative paths such as `C:state`, and unexpanded `~` paths are rejected. The bundle's default uses Harness's resolved home path and is already absolute.
 
 ## Start and stop
 
