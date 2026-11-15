@@ -4,6 +4,9 @@ import { basename } from 'node:path'
 import { promisify } from 'node:util'
 import { z } from 'zod'
 import type { Deployment } from '../deployment.ts'
+import { invocation } from './platform.ts'
+import { withCliInputs } from './cli-input.ts'
+import type { SubprocessHandle, SubprocessRuntime } from '@deepseek-ai/dsh-subprocess'
 
 const exec = promisify(execFile)
 const TIMEOUT_MS = 90_000
@@ -61,19 +64,50 @@ export class Commands {
    * @param resolved - returns the resolved deployment setup, or throws while setup is still pending.
    * @param environment - variables overriding `process.env` for every command (such as isolated git settings).
    */
-  constructor(private readonly resolved: () => Deployment, private readonly environment: Record<string, string | undefined>, private readonly signal: AbortSignal) {}
+  constructor(private readonly resolved: () => Deployment, private readonly environment: Record<string, string | undefined>, private readonly signal: AbortSignal,
+    private readonly subprocess?: SubprocessRuntime) {}
   get deployment(): Deployment { return this.resolved() }
   get repository(): string { return this.deployment.repository }
-  withSignal(signal?: AbortSignal): Commands { return signal ? new Commands(this.resolved, this.environment, AbortSignal.any([this.signal, signal])) : this }
+  withSignal(signal?: AbortSignal): Commands { return signal ? new Commands(this.resolved, this.environment, AbortSignal.any([this.signal, signal]), this.subprocess) : this }
+  private get entries(): NodeJS.ProcessEnv {
+    return { ...this.environment, GH_PROMPT_DISABLED: '1', LARKSUITE_CLI_NO_UPDATE_NOTIFIER: '1', LARKSUITE_CLI_NO_SKILLS_NOTIFIER: '1' }
+  }
+  /** Long-lived source CLI with provider-owned pipes and process-tree cancellation, including batch launchers. */
+  stream(program: string, args: string[], signal: AbortSignal): SubprocessHandle {
+    if (!this.subprocess) throw new Error('Streaming source commands require the DSH subprocess service')
+    return this.subprocess.spawn({ argv: invocation(program, args, this.entries.PATH), cwd: this.deployment.stateDir,
+      env: this.entries, signal: AbortSignal.any([this.signal, signal]), graceMs: 2000,
+      stdio: { stdin: 'pipe', stdout: 'pipe', stderr: 'pipe' } })
+  }
   async run(program: string, args: string[], cwd?: string): Promise<string> {
+    const [file, ...argv] = invocation(program, args, this.environment.PATH ?? process.env.PATH)
     try {
-      const { stdout } = await exec(program, args, { cwd, signal: this.signal, timeout: TIMEOUT_MS, maxBuffer: 16 * 1024 * 1024,
-        env: { ...process.env, ...this.environment, GH_PROMPT_DISABLED: '1', LARKSUITE_CLI_NO_UPDATE_NOTIFIER: '1', LARKSUITE_CLI_NO_SKILLS_NOTIFIER: '1' } })
+      if (this.subprocess) {
+        const timeout = AbortSignal.timeout(TIMEOUT_MS)
+        const handle = this.subprocess.spawn({ argv: [file!, ...argv], cwd: cwd ?? this.deployment.stateDir, env: this.entries,
+          signal: AbortSignal.any([this.signal, timeout]), graceMs: 2000,
+          stdio: { stdin: 'ignore', stdout: { maxBytes: 16 * 1024 * 1024 }, stderr: { maxBytes: 1 << 16 } } })
+        const { exitCode } = await handle.done
+        if (this.signal.aborted) throw new DOMException('The operation was aborted', 'AbortError')
+        if (timeout.aborted) throw { killed: true, signal: 'SIGTERM' }
+        const stdout = handle.collected.stdout?.readFrom(0)
+        if (stdout?.lossy) throw { code: 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER' }
+        if (exitCode !== 0) throw { code: exitCode, stderr: handle.collected.stderr?.readFrom(0).text ?? '' }
+        return stdout?.text ?? ''
+      }
+      const { stdout } = await exec(file!, argv, { cwd, signal: this.signal, timeout: TIMEOUT_MS, maxBuffer: 16 * 1024 * 1024, windowsHide: true,
+        env: { ...process.env, ...this.entries } })
       return stdout
     } catch (error) { throw commandError(error, program) }
   }
+  private account(kind: 'github' | 'feishu', program: string, args: string[], cwd?: string): Promise<string> {
+    return withCliInputs(kind, program, args, cwd ?? this.deployment.stateDir, (mapped, directory) => {
+      const workdir = directory ?? cwd
+      return workdir === undefined ? this.run(program, mapped) : this.run(program, mapped, workdir)
+    })
+  }
   /** Runs the agent's GitHub CLI and parses its JSON output; callers should prefer `api`, which is restricted to the configured repository and validates output. */
-  async gh<T>(args: string[]): Promise<T> { return JSON.parse(await this.run(this.deployment.github.cli, args)) as T }
+  async gh<T>(args: string[]): Promise<T> { return JSON.parse(await this.account('github', this.deployment.github.cli, args)) as T }
   /**
    * Calls the GitHub API on a path within the configured repository, validating JSON output when a schema is provided
    * or returning raw CLI output (such as raw files or `--include` headers) when omitted.
@@ -82,7 +116,7 @@ export class Commands {
   async api<T>(schema: z.ZodType<T>, path: string, ...flags: string[]): Promise<T>
   async api(path: string, ...flags: string[]): Promise<string>
   async api<T>(schema: z.ZodType<T> | string, ...rest: string[]): Promise<T | string> {
-    if (typeof schema === 'string') return this.run(this.deployment.github.cli, ['api', this.path(schema), ...rest])
+    if (typeof schema === 'string') return this.account('github', this.deployment.github.cli, ['api', this.path(schema), ...rest])
     const [path = '', ...flags] = rest
     return schema.parse(await this.gh(['api', this.path(path), ...flags]))
   }
@@ -103,7 +137,7 @@ export class Commands {
   async lark<T>(args: string[], cwd?: string): Promise<T> {
     const bot = this.deployment.feishu
     if (!bot) throw new Error('The Feishu Source has no working bot CLI')
-    const output = await this.run(bot.cli, [...args, '--as', 'bot', '--format', 'json'], cwd)
+    const output = await this.account('feishu', bot.cli, [...args, '--as', 'bot', '--format', 'json'], cwd)
       .catch((error: unknown) => { throw membership(error) })
     const result = JSON.parse(output) as { ok: boolean; data: T; error?: { code?: number; message?: string } }
     const code = result.error?.code

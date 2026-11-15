@@ -60,6 +60,8 @@ const now = (): string => new Date().toISOString()
 export class Runtime extends Service implements SourceHost {
   readonly store: Store
   readonly setup: Setup
+  /** Entries consumed by the managed presets and prepare processes; ordinary profile sessions retain their own environment. */
+  get workerEnvironment(): NodeJS.ProcessEnv { return this.setup.workerEnvironment }
   readonly prompts: Prompts
   readonly effects: Effects
   readonly sources: SourceRegistry
@@ -104,7 +106,7 @@ export class Runtime extends Service implements SourceHost {
       const prompts = this.prompts = new Prompts(store, () => machine.promptMaxChars.get(), deployed, feishu)
       const masterId = this.masterId = store.get(KV.runtime.masterId) ?? `orchestrator-${key(machine.stateDir)}`
       store.set(KV.runtime.masterId, masterId)
-      const commands = this.commands = new Commands(() => setup.deployment, setup.commandEnvironment, this.lifetime)
+      const commands = this.commands = new Commands(() => setup.deployment, setup.commandEnvironment, this.lifetime, ctx.subprocess)
       const board = this.board
       const effects = this.effects = new Effects(store, board)
       const sources = this.sources = new SourceRegistry(() => store.settings(), board, kind => {
@@ -129,7 +131,7 @@ export class Runtime extends Service implements SourceHost {
         sourceHost: this, setup, requestPass: () => { this.passes.request() } })
       this.executor = new DshExecutor({ context: ctx, get engine() { return runtime.engine }, store, effects, health: board.claim('worker'), machine,
         lifetime: this.lifetime, sessions, closing: () => this.closing(), paused: () => this.paused(), environment, sourceLink: link,
-        repliedTo: trigger => repliedTo({ store, sources }, trigger) })
+        repliedTo: trigger => repliedTo({ store, sources }, trigger), workerEnvironment: () => setup.workerEnvironment })
       this.assessor = new MasterAssessor({ get engine() { return runtime.engine }, commands, get deployment() { return setup.deployment }, effects,
         settings: () => store.settings(), paused: () => this.paused(), threadContext: trigger => sources.threadContext(trigger),
         deliver: (id, text) => sessions.prompt(masterId, id, text, 'steer'), candidateCard: candidate => candidateCard(links, candidate) })
@@ -263,7 +265,6 @@ export class Runtime extends Service implements SourceHost {
       await this.ctx.sessionPersistence.flush()
     } finally {
       // Close the database before releasing the directory lock so another process cannot open the database mid-write; a compromised lock may already be released.
-      this.setup.restore()
       try { this.store.close() } finally {
         const unreleased = (error: unknown) => { this.ctx.logger.warn('dsh-superagent could not release its state directory lock: %s',
           String(error)) }

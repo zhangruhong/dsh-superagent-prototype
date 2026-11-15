@@ -64,6 +64,7 @@ export function repositoryWorktreeCommand(ticket: Pick<Ticket, 'repository' | 'e
 }
 /** Host dependencies used by `DshExecutor`. */
 export interface ExecutorHost {
+  workerEnvironment(): NodeJS.ProcessEnv
   /** DSH Cordis context: agents and their events, and the subprocess service used to run prepare commands. */
   readonly context: Context
   /** Where the Executor reports what happened to Assignments and Inputs. */
@@ -256,18 +257,19 @@ export class DshExecutor implements Executor {
     await mkdir(dirname(directory), { recursive: true })
     const binding = ticket.repository
     const source = binding?.localPath
+    const workerEnvironment = this.host.workerEnvironment()
     if (source) {
       let existing = false
       try { existing = (await stat(directory)).isDirectory() } catch { /* Worktree has not been created yet. */ }
       if (!existing) {
         await runAsWorker(this.host.context.subprocess, repositoryWorktreeCommand(ticket)!, dirname(directory),
-          AbortSignal.any([this.host.lifetime, AbortSignal.timeout(PREPARE_TIMEOUT_MS)])).catch((error: unknown) => {
+          AbortSignal.any([this.host.lifetime, AbortSignal.timeout(PREPARE_TIMEOUT_MS)]), workerEnvironment).catch((error: unknown) => {
             throw new PrepareFailed(`The repository worktree could not be created: ${error instanceof Error ? error.message : String(error)}`)
           })
       }
     }
     const command = this.host.store.settings().executor.prepare.trim()
-    const env = Object.fromEntries(this.host.environment(ticket).map(variable => [variable.key, variable.value]))
+    const env = { ...workerEnvironment, ...Object.fromEntries(this.host.environment(ticket).map(variable => [variable.key, variable.value])) }
     // Enforce a timeout so a hung prepare command (such as on a credential prompt) fails the ticket instead of holding a worker slot indefinitely.
     const signal = AbortSignal.any([this.host.lifetime, AbortSignal.timeout(PREPARE_TIMEOUT_MS)])
     if (command) await runAsWorker(this.host.context.subprocess, [...prepareShell(), command], dirname(directory), signal, env)
@@ -277,7 +279,7 @@ export class DshExecutor implements Executor {
         throw new PrepareFailed(`The prepare command failed: ${error instanceof Error ? error.message : String(error)}`)
       })
     await mkdir(directory, { recursive: true })
-    await verifyDirectory(directory, this.host.context.subprocess, this.host.lifetime)
+    await verifyDirectory(directory, this.host.context.subprocess, this.host.lifetime, workerEnvironment)
   }
   /** Enqueues a `launch` effect for an accepted or resumed assignment; launches start in queue order as worker slots free up. */
   start(ticket: Ticket, assignment: Assignment): void {

@@ -86,7 +86,7 @@ const OTHER = () => join(directory, 'other-gh')
 const BOT = () => join(directory, 'lark-bot')
 const HELPERS = 'git config -z --show-origin --get-all credential.https://github.com.helper'
 const SCOPED = 'git config -z --show-scope --get-regexp ^(credential\\..*|http\\..*extraheader)$'
-const subprocess = { spawn: vi.fn((spec: { argv: readonly string[] }) => {
+const subprocess = { spawn: vi.fn((spec: { argv: readonly string[]; env?: NodeJS.ProcessEnv }) => {
   // Strip leading `env` and `KEY=VALUE` arguments before looking up the command response.
   const argv = [...spec.argv]
   while (argv[0] === 'env' || /^[A-Z_]+=/.test(argv[0] ?? '')) argv.shift()
@@ -103,6 +103,7 @@ function seed(store: Store, accounts: Accounts = {}): void {
   store.saveSettings(SettingsSchema.parse({ ...settings, sources: { ...others, github: { enabled: true, config: { repository: 'acme/widgets', cli: AGENT(), ...accounts.github } }, ...feishu ? { feishu: { enabled: true, config: feishu } } : {} } }))
 }
 let restarts: ReturnType<typeof vi.fn<() => void>>
+let shellTool = 'bash'
 async function restart(machine: Partial<Machine> = {}, accounts: Accounts = {}): Promise<Runtime> {
   await runtime.stop()
   const store = new Store(join(directory, 'orchestrator.sqlite')); seed(store, accounts); store.close()
@@ -136,6 +137,7 @@ async function acceptedTicket(trigger = feishu('1', '@bot 修一下回归')) {
   return { trigger, ticket, sessionId: `worker-${ticket.id}` }
 }
 beforeEach(async () => {
+  shellTool = 'bash'
   directory = mkdtempSync(join(tmpdir(), 'orchestrator-runtime-'))
   vi.spyOn(Commands.prototype, 'gh').mockImplementation(async args => args[1] === 'user' ? { login: 'agent-bot' } : args[1]?.includes('/pulls/') ? { state: 'open', user: { login: 'agent-bot' }, html_url: 'https://github.com/acme/widgets/pull/' + args[1].split('/').at(-1), head: { ref: `agent/${String(runtime.store.tickets.list()[0]?.execution?.name)}`, sha: 'head-1', repo: { full_name: 'acme/widgets' } } } : { default_branch: 'master', permissions: { push: true } })
   vi.spyOn(Commands.prototype, 'lark').mockResolvedValue({ users: [{ member_id: MEMBER, name: 'Alice' }], has_more: false })
@@ -165,7 +167,7 @@ beforeEach(async () => {
       if (agents.has(sessionId)) return
       const agentCtx = new Context()
       const preset = {}
-      const inherited = ['bash', 'read', 'read_image', 'skill', 'job_output', 'job_list', 'job_kill', 'grep', 'web_search',
+      const inherited = [shellTool, 'read', 'read_image', 'skill', 'job_output', 'job_list', 'job_kill', 'grep', 'web_search',
         'ask_user_question', 'plugin_manager', 'schedule_create', 'create_goal', 'session_create', 'session_send_message', 'feishu_doc_edit']
       const sessionTools = new Map<string, RegisteredTool>()
       tools.set(sessionId, sessionTools)
@@ -216,6 +218,28 @@ beforeEach(async () => {
   deliveries.mockClear()
 })
 afterEach(async () => { expect(controller.prompt).not.toHaveBeenCalled(); await runtime?.stop(); vi.restoreAllMocks(); rmSync(directory, { recursive: true, force: true }) })
+
+it('keeps the ordinary Desktop host environment unchanged while setup is ready and after shutdown', async () => {
+  expect(process.env.GIT_CONFIG_GLOBAL).toBeUndefined()
+  expect(process.env.PATH?.split(delimiter)).not.toContain(join(directory, 'worker-bin'))
+  const before = { ...process.env }
+  expect(runtime.workerEnvironment).toMatchObject({ GIT_CONFIG_GLOBAL: workerGitConfig(directory), GH_TOKEN: undefined })
+  await runtime.stop()
+  expect(process.env).toEqual(before)
+})
+
+it('mounts the Windows router with only known PowerShell tools and enforces the same wait limits', async () => {
+  await runtime.stop(); agents.clear(); restricts.clear(); shellTool = 'pwsh'
+  runtime = await restart(); await runtime.ready
+  expect(runtime.setupProblem).toBeUndefined()
+  expect(restricts.get(runtime.masterId)).toEqual([{ allow: ['skill', 'pwsh', 'read', 'read_image', 'job_output', 'job_list', 'job_kill'] }])
+  const guard = guards.get(runtime.masterId)!
+  for (const command of ['Start-Sleep -Seconds 60', 'sleep 5', 'Write-Output done; start-sleep 10']) {
+    expect(guard({ name: 'pwsh', arguments: { command } })).toMatch(/^Reports/)
+  }
+  expect(guard({ name: 'pwsh', arguments: { command: 'Get-ChildItem', timeoutMs: 60_000 } })).toMatch(/^Reports/)
+  expect(guard({ name: 'pwsh', arguments: { command: 'Write-Output "Start-Sleep"', timeoutMs: 5000 } })).toBeUndefined()
+})
 
 it('relays an explicit member mention as a candidate and creates the ticket, acknowledgement, subscription and worker on accept', async () => {
   const { trigger, ticket, sessionId } = await acceptedTicket()
@@ -851,10 +875,9 @@ it('reports each setup problem where the operator fixes it, and checks the agent
   await needs('github', 'repositoryReadOnly', { account: 'agent-bot', repository: 'acme/widgets' })
   answers[`${AGENT()} api repos/acme/widgets --jq {name: .full_name, push: .permissions.push}`] = '{"name":"acme/widgets","push":true}\n'
   // The agent CLI runs in the workers' environment: without the shims on PATH.
-  const check = subprocess.spawn.mock.calls.map(([spec]) => spec.argv).find(argv => argv.includes(AGENT()))!
-  expect(check[0]).toBe('env')
-  expect(check[1]!.startsWith('PATH=')).toBe(true)
-  expect(check[1]!.slice('PATH='.length).split(':')).not.toContain(join(directory, 'worker-bin'))
+  const check = subprocess.spawn.mock.calls.map(([spec]) => spec).find(spec => spec.argv.includes(AGENT()))!
+  expect(check.argv[0]).toBe(AGENT())
+  expect(check.env?.PATH?.split(delimiter)).not.toContain(join(directory, 'worker-bin'))
   const valid = { ...answers }
   // git older than 2.32 ignores GIT_CONFIG_GLOBAL and reads the operator's configuration.
   answers = { ...valid, [HELPERS]: 'file:/home/me/.gitconfig\0!gh auth git-credential\0' }
@@ -984,9 +1007,10 @@ it('writes worker shims and the agent environment from the configuration only, a
   expect(readFileSync(join(bin, workerShimFile('gh')), 'utf8')).toContain(process.platform === 'win32' ? AGENT() : `exec '${AGENT()}'`)
   const configuredCredentialHelper = credentialHelper(AGENT()).replace(/[\\"]/g, char => `\\${char}`)
   expect(readFileSync(workerGitConfig(directory), 'utf8')).toContain(`[credential "https://github.com"]\n\thelper = "${configuredCredentialHelper}"`)
-  expect(process.env).toMatchObject({ GIT_CONFIG_GLOBAL: workerGitConfig(directory), GIT_CONFIG_NOSYSTEM: '1' })
-  expect(process.env.GIT_AUTHOR_NAME).toBeUndefined()
-  expect(process.env.PATH?.split(delimiter)[0]).toBe(bin)
+  expect(next.workerEnvironment).toMatchObject({ GIT_CONFIG_GLOBAL: workerGitConfig(directory), GIT_CONFIG_NOSYSTEM: '1' })
+  expect(next.workerEnvironment.PATH?.split(delimiter)[0]).toBe(bin)
+  expect(process.env.GIT_CONFIG_GLOBAL).toBeUndefined()
+  expect(process.env.PATH?.split(delimiter)).not.toContain(bin)
   await next.stop()
   expect(process.env.GIT_CONFIG_GLOBAL).toBeUndefined()
   expect(process.env.PATH?.split(delimiter)).not.toContain(bin)

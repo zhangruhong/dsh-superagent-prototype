@@ -22,6 +22,9 @@ import { SetupError, type SetupProblem } from '../src/setup.ts'
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { Context } from '@deepseek-ai/cordis'
+import { LocalSubprocessRuntime } from '@deepseek-ai/dsh-subprocess-local'
+import { nodeCli } from './fixtures/cli.ts'
 
 const MEMBER = 'ou_alice'
 function host(overrides: Partial<SourceContextDeps> = {}) {
@@ -1030,13 +1033,24 @@ describe('feishu event consumer', () => {
   let dir: string
   let controller: AbortController
   let running: Promise<unknown> | undefined
-  // The fake CLI is a real process, which starts slower while the whole suite runs.
-  const until = { timeout: 10_000 }
-  beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'feishu-consumer-')); controller = new AbortController() })
+  let processContext: Context
+  let processFiber: ReturnType<Context['plugin']>
+  let consumerStores: Store[]
+  // Windows starts a PowerShell/batch/native process chain. Budget for a loaded machine;
+  // the separate readiness deadline remains the production consumer's 45-second deadline.
+  const consumerTimeout = process.platform === 'win32' ? 60_000 : 20_000
+  const until = { timeout: consumerTimeout / 2 }
+  beforeEach(async () => {
+    dir = mkdtempSync(join(tmpdir(), 'feishu-consumer-')); controller = new AbortController()
+    consumerStores = []
+    processContext = new Context(); processFiber = processContext.plugin(LocalSubprocessRuntime); await processFiber
+  })
   afterEach(async () => {
     controller.abort()
     await running
     vi.useRealTimers()
+    processContext.registry.delete(LocalSubprocessRuntime); await processFiber.await()
+    for (const store of consumerStores) if (store.db.isOpen) store.close()
     rmSync(dir, { recursive: true, force: true })
   })
   /**
@@ -1044,26 +1058,27 @@ describe('feishu event consumer', () => {
    * and `flaky` exits after its first ready. It records each run and the PID of the latest.
    */
   function cli(mode: 'never' | 'warn' | 'ready' | 'flaky' | 'events' | 'late'): string {
-    const path = join(dir, 'lark-bot')
-    writeFileSync(path, `#!/bin/sh
-  [ "$1" = event ] || { echo '{"ok":true,"data":{}}'; exit 0; }
-  n=$(cat '${dir}/runs' 2>/dev/null || echo 0); n=$((n + 1)); echo $n > '${dir}/runs'; echo $$ > '${dir}/pid'
-  case ${mode} in
-    never) exec sleep 60 ;;
-    warn) echo '[event] ready' >&2; echo 'WARN the connection was reset' >&2; exec sleep 60 ;;
-    ready) echo '[event] ready' >&2; exec sleep 60 ;;
-    flaky) echo '[event] ready' >&2; [ "$n" -gt 1 ] && exec sleep 60; exit 1 ;;
-    events) echo '[event] ready' >&2; cat '${dir}/events'; touch '${dir}/printed'; exec sleep 60 ;;
-    late) echo '[event] ready' >&2; sleep 1; cat '${dir}/events'; touch '${dir}/printed'; exec sleep 60 ;;
-  esac
-  `, { mode: 0o755 })
-    return path
+    return nodeCli(join(dir, 'lark-bot'), `
+const fs = require('node:fs');
+const dir = ${JSON.stringify(dir)}, mode = ${JSON.stringify(mode)};
+if (process.argv[2] !== 'event') { console.log('{"ok":true,"data":{}}'); process.exit(0); }
+let n = 0; try { n = Number(fs.readFileSync(dir+'/runs','utf8')); } catch {}
+n++; fs.writeFileSync(dir+'/runs',String(n)); fs.writeFileSync(dir+'/pid',String(process.pid));
+if (mode !== 'never') process.stderr.write('[event] ready\\n');
+if (mode === 'warn') process.stderr.write('WARN the connection was reset\\n');
+if (mode === 'flaky' && n === 1) process.exit(1);
+const print = () => { process.stdout.write(fs.readFileSync(dir+'/events')); fs.writeFileSync(dir+'/printed',''); };
+if (mode === 'events') print();
+if (mode === 'late') setTimeout(print,1000);
+setInterval(()=>{},60000);
+`);
   }
   const runs = () => existsSync(join(dir, 'runs')) ? Number(readFileSync(join(dir, 'runs'), 'utf8')) : 0
   const alive = (pid: number) => { try { process.kill(pid, 0); return true } catch { return false } }
   /** The Feishu Source's context, on a fresh Store whose Feishu Source is on, with `cli` as the bot CLI. */
   function consumerSource(path: string, config: Record<string, unknown> = { chats: [] }) {
     const store = new Store(join(dir, 'db.sqlite'))
+    consumerStores.push(store)
     store.saveSettings(SettingsSchema.parse({ sources: { feishu: { enabled: true, config } } }))
     const board = new HealthBoard()
     const sources = new SourceRegistry(() => store.settings(), board)
@@ -1073,9 +1088,9 @@ describe('feishu event consumer', () => {
     const outbox = { send: () => {}, status: () => undefined, withdraw: () => {} }
     const policy = () => settingsPolicy(store.settings(), sources)
     const engine = new Engine({ repo: store, scope: sources, policy, assessor, executor, outbox })
-    const deployment = testDeployment({ feishu: { ...testDeployment().feishu!, cli: path } })
+    const deployment = testDeployment({ stateDir: dir, feishu: { ...testDeployment().feishu!, cli: path } })
     const health = board.all
-    const commands = new Commands(() => deployment, {}, controller.signal)
+    const commands = new Commands(() => deployment, {}, controller.signal, processContext.subprocess)
     const deps: SourceContextDeps = { store, engine, outbox: { send: () => {} }, commands, sources, deployment, ready: Promise.resolve(), configured: () => true,
       receive: (trigger: Trigger) => engine.receive(trigger) }
     const turnOff = () => store.saveSettings(SettingsSchema.parse({ sources: { feishu: { enabled: false, config: { chats: [] } } } }))
@@ -1096,8 +1111,11 @@ describe('feishu event consumer', () => {
     expect(store.get(KV.feishu.chats)).toEqual({ oc_group: false, oc_dm: true })
     expect(health.feishu).toMatchObject({ state: 'error', detail: expect.stringContaining('JSON') })
     controller.abort(); await running; store.close()
-  }, 20_000)
+  }, consumerTimeout)
   it('drops the events it reads once the Source is off', async () => {
+    // Hold the five-second disable poll while testing already-arriving events. The CLI can take
+    // several seconds to start on Windows; otherwise that poll may kill it before its delayed event.
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
     writeFileSync(join(dir, 'events'), event('om_9', 'oc_group', 'group') + '\n')
     const { ctx, health, store, turnOff } = consumerSource(cli('late'))
     running = runFeishu(ctx, controller.signal)
@@ -1108,7 +1126,7 @@ describe('feishu event consumer', () => {
     await new Promise(resolve => setTimeout(resolve, 300))
     expect(store.triggers.get(feishuTriggerId('om_9'))).toBeUndefined()
     controller.abort(); await running; store.close()
-  }, 20_000)
+  }, consumerTimeout)
   it('keeps a chat\'s history cursor when its read fails, and recovers known direct chats only while direct messages are on', async () => {
     const hour = new Date(Date.now() - 3_600_000).toISOString()
     const recovered = async (directMessages: boolean) => {
@@ -1142,7 +1160,7 @@ describe('feishu event consumer', () => {
     const off = await recovered(false)
     expect(off.chats).toEqual(['oc_a', 'oc_b'])
     expect(off.cursors.oc_dm).toBe(hour)
-  }, 20_000)
+  }, consumerTimeout)
   it('reports an error when the consumer is not ready within 45 seconds', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     const { ctx, health, store } = consumerSource(cli('never'))
@@ -1154,13 +1172,13 @@ describe('feishu event consumer', () => {
       detail: expect.stringContaining('did not become ready within 45 seconds') }), until)
     expect(alive(pid)).toBe(false)
     controller.abort(); await running; store.close()
-  }, 20_000)
+  }, consumerTimeout)
   it('reports a warning the consumer prints as an error', async () => {
     const { ctx, health, store } = consumerSource(cli('warn'))
     running = runFeishu(ctx, controller.signal)
     await vi.waitFor(() => expect(health.feishu).toMatchObject({ state: 'error', detail: 'WARN the connection was reset' }), until)
     controller.abort(); await running; store.close()
-  }, 20_000)
+  }, consumerTimeout)
   it('stops the consumer within five seconds once the Source is off', async () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
     const { ctx, health, store, turnOff } = consumerSource(cli('ready'))
@@ -1172,7 +1190,7 @@ describe('feishu event consumer', () => {
     await vi.waitFor(() => expect(health.feishu).toMatchObject({ state: 'paused', code: 'sourceOff' }), until)
     expect(alive(pid)).toBe(false)
     controller.abort(); await running; store.close()
-  }, 20_000)
+  }, consumerTimeout)
   it('starts the consumer again after it exits, and is ready once the next run listens', async () => {
     const { ctx, health, store } = consumerSource(cli('flaky'))
     running = runFeishu(ctx, controller.signal)
@@ -1182,7 +1200,7 @@ describe('feishu event consumer', () => {
     await vi.waitFor(() => expect(runs()).toBe(2), until)
     await vi.waitFor(() => expect(health.feishu).toMatchObject({ state: 'ready' }), until)
     controller.abort(); await running; store.close()
-  }, 20_000)
+  }, consumerTimeout)
 })
 
 describe('observing the GitHub repository', () => {

@@ -4,7 +4,7 @@ Use this guide to install, configure and operate dsh-superagent. It covers accou
 
 ## What runs
 
-- **A dedicated DeepSeek Harness profile**, called `superagent` in the Web/CLI flow below. It loads the bundle and serves its panel on `127.0.0.1`. The same bundle can be installed into the Harness Desktop profile; Desktop uses the same client plugin contract and runs the backend in its local Host. Keep it separate from the profile you work in: the plugin changes process-wide `PATH` and git settings, and its process needs independent restarts and upgrades.
+- **A DeepSeek Harness profile**, called `superagent` in the Web/CLI flow below. It loads the bundle and serves its panel on `127.0.0.1`. The same bundle can be installed into the Harness Desktop profile; Desktop uses the same client plugin contract and runs the backend in its local Host. Worker account settings are injected into managed commands and shells; the plugin does not rewrite the Host's process-wide `PATH` or git environment. A dedicated profile remains useful for independent service restarts and upgrades.
 - **A configured repository provider.** GitHub remains supported, and the Repository Source supports one GitLab/CNB project or a recursively discovered local workspace. CNB configuration is capability-only until its live adapter is implemented.
 - **Optional:** a Feishu bot or an Enterprise WeChat intelligent robot for chat requests.
 
@@ -45,6 +45,19 @@ Both presets run with `danger-full-access` as the operator's OS user and read me
    ```
 
    Sign in as the agent account; the last command prints its login. dsh-superagent reads the login the same way.
+
+   On Windows, an account wrapper may be a `.cmd` or `.ps1` file. For example, save this as `C:\agent-tools\gh-agent.cmd` and authenticate by running that file with `auth login`:
+
+   ```bat
+   @echo off
+   setlocal DisableDelayedExpansion
+   set "GH_CONFIG_DIR=C:\agent-data\github"
+   gh.exe %*
+   ```
+
+   Configure the wrapper's absolute path in Sources. The real `gh.exe` must be on PATH. The plugin removes its own `worker-bin` directory before invoking the account wrapper, so wrappers can delegate by command name without recursing. `.ps1` wrappers run through PowerShell; `.cmd` and `.bat` wrappers run through `cmd.exe` with a UTF-8 code page.
+
+   Windows script account CLIs receive outbound text and JSON through provider-supported temporary file inputs: GitHub uses `-F field=@file`, and Lark uses `--markdown @file` / `--params @file`. Files are unique per call and removed after success, cancellation or error. This follows the [GitHub CLI API contract](https://cli.github.com/manual/gh_api) and [Lark file-input contract](https://github.com/larksuite/cli/blob/main/cmd/api/api.go). Generic batch calls with multiline or embedded-quote arguments fail explicitly, because arbitrary `%*` forwarding chains cannot preserve them reliably. For manual worker shell commands, prefer native executables and the same file-input flags for payloads.
 
 ### Feishu bot (optional)
 
@@ -99,6 +112,8 @@ The package manifest deliberately keeps `dsh.client.platform` as `web`: Harness 
 
 Desktop owns its profile and bundled runtime. Do not mix the Desktop profile's packages with an npm-installed Web/CLI profile. On Windows, the plugin uses PowerShell for the configured Executor `prepare` command and writes `.cmd` command shims; on macOS and Linux it uses `sh` and POSIX shims.
 
+Managed workers, the router and their subagents use the bundle's shell adapters to receive their account environment on every command. Ordinary Desktop Sessions keep their own environment. Keep the bundled worker preset selected for managed subagents; replacing it with a standard preset would bypass that account injection. The Windows command launcher prefers `pwsh.exe` on PATH and otherwise uses the built-in Windows PowerShell. The Desktop `pwsh` tool itself uses the shell path configured by Harness.
+
 Run the profile-creation command only for a new installation. If the profile already exists, that command replaces it and deletes its `cordis.patch.yml`, including machine configuration. Do not use it for upgrades.
 
 ## Machine configuration
@@ -112,7 +127,11 @@ Copy [examples/profile.cordis.patch.yml](../examples/profile.cordis.patch.yml) t
 
 After the first start, edit machine limits in **Settings → Deployment** or the DeepSeek Harness Plugin Manager. Changes apply without restart. `stateDir` cannot be changed there. Invalid values or unknown configuration keys prevent startup; the log identifies the key.
 
+Both `stateDir` and the Execution directory accept native absolute paths, including `C:/agent/state`, `C:\agent\state`, Windows UNC paths, and `/home/agent/state`. Use a path valid on the machine running the Host. Relative paths, drive-relative paths such as `C:state`, and unexpanded `~` paths are rejected.
+
 ## Start and stop
+
+The `scripts/dsh-superagent` helper below requires a POSIX environment with Python and tmux. On Windows Desktop, start and quit Harness Desktop itself; the plugin does not require tmux or a separate service wrapper. macOS/Linux Desktop can use the same Desktop lifecycle.
 
 ```sh
 scripts/dsh-superagent start
