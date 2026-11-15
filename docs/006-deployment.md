@@ -83,30 +83,44 @@ Both presets run with `danger-full-access` as the operator's OS user and read me
 
 ## Install
 
-Run this block once, on a machine that has no `superagent` profile yet:
+The normal installation is the published Harness bundle. Run this on a machine that has no `superagent` profile yet:
 
 ```sh
 npm install -g @deepseek-ai/dsh@0.2.1-rc.3
-git clone <this repository> dsh-superagent && cd dsh-superagent
-pnpm install && pnpm build
 dsh superagent --from-default-profile web --dump-config > /dev/null
-dsh plugin --profile superagent add "link:$PWD"
+dsh plugin --profile superagent add dsh-superagent@0.2.0
 ```
 
-The pinned version above is public; other versions must satisfy `engines.dsh` in `package.json`.
+The package version is illustrative until the first release; replace it with the version you intend to pin. DSH checks the package's `engines.dsh` range against the running Host. The package is public only after it is published; before that, install the GitHub release tarball described below.
 
-The fourth command creates `~/.dsh/profiles/superagent` from the DeepSeek Harness Web template. The fifth installs this bundle. Set `DSH_HOME` to relocate the default `~/.dsh` directory.
+The third command creates `~/.dsh/profiles/superagent` from the DeepSeek Harness Web template. Set `DSH_HOME` to relocate the default `~/.dsh` directory.
+
+### Install a local or release tarball
+
+To install a build before publishing it, or to pin a GitHub release asset:
+
+```sh
+pnpm install --frozen-lockfile
+pnpm pack:plugin
+dsh plugin --profile superagent add ./.artifacts/dsh-superagent-0.2.0.tgz
+```
+
+Run `pnpm pack:plugin` from the checkout. It builds the bundle first and packs only the files listed by `package.json`; source TypeScript, tests and development dependencies are not part of the plugin archive. A GitHub release can attach the resulting `.tgz`, and users can pass its downloaded path to `dsh plugin ... add`.
+
+Use `link:<checkout>` only while developing the plugin. It makes the installed profile depend on a mutable working tree and cannot be used by the Plugin Market as a released version.
 
 ### Install into Harness Desktop
 
 The package manifest deliberately keeps `dsh.client.platform` as `web`: Harness Desktop loads the shared Web client bundle, so changing that value to `desktop` would make the plugin fail the standard client-module contract. To install the bundle into Desktop:
 
 1. Launch Desktop once so it creates and initializes its `desktop` profile, then quit Desktop.
-2. Use the `dsh` command installed with Desktop to install the local bundle:
+2. Use the `dsh` command installed with Desktop to install the published bundle:
 
    ```powershell
-   dsh plugin --profile desktop add "link:C:\path\to\dsh-superagent-prototype"
+   dsh plugin --profile desktop add dsh-superagent@0.2.0
    ```
+
+   For a downloaded release asset, use `dsh plugin --profile desktop add C:\path\to\dsh-superagent-0.2.0.tgz` instead.
 
 3. Reopen Desktop and enable dsh-superagent from the Plugins page.
 

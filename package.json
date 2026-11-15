@@ -2,9 +2,17 @@
   "name": "dsh-superagent",
   "author": "DeepSeek Harness Team <team@dsh.dev>",
   "license": "MIT",
-  "version": "0.1.0",
-  "private": true,
-  "description": "A proactive agent for one GitHub repository, as a DSH (DeepSeek Harness) bundle: it listens to GitHub and optionally Feishu, evaluates requests under a Policy, turns authorized ones into Tickets, and executes each in its own DSH Session.",
+  "version": "0.2.0",
+  "private": false,
+  "description": "A proactive agent for configured repositories and channels, packaged as a DSH (DeepSeek Harness) bundle.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zhangruhong/dsh-superagent-prototype.git"
+  },
+  "homepage": "https://github.com/zhangruhong/dsh-superagent-prototype#readme",
+  "bugs": {
+    "url": "https://github.com/zhangruhong/dsh-superagent-prototype/issues"
+  },
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
@@ -28,6 +36,8 @@
     "cordis.patch.yml",
     "locale/*.json",
     "README.md",
+    "docs/*.md",
+    "examples/*.yml",
     "THIRD_PARTY_NOTICES.md",
     "prompts",
     "skills"
@@ -53,7 +63,9 @@
     "build": "tsdown",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "check": "pnpm typecheck && pnpm test && pnpm build"
+    "check": "pnpm typecheck && pnpm test && pnpm build",
+    "prepack": "pnpm build",
+    "pack:plugin": "pnpm build && pnpm pack --pack-destination .artifacts"
   },
   "engines": {
     "node": "^22.19.0 || >=24.0.0",

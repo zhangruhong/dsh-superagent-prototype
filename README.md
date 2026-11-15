@@ -8,6 +8,30 @@ dsh-superagent is a proactive coding agent for configured repositories or a recu
 
 It is also a way of working with an agent: **take as little human attention as possible, and give as much value as possible.** An agent that can act for a whole team can also waste a whole team's attention, so it acts only when asked or when a rule the team wrote allows it, and speaks only when someone must act or can use a result. [docs/000-philosophy.md](docs/000-philosophy.md) explains the principle and what it asks of the operator.
 
+## Install as a Harness plugin
+
+After a release is published, install the package directly into the profile that owns the agent:
+
+```sh
+# Web/CLI profile
+dsh plugin --profile superagent add dsh-superagent@0.2.0
+
+# Harness Desktop profile
+dsh plugin --profile desktop add dsh-superagent@0.2.0
+```
+
+The package carries the compiled Host entry, client panel, bundle patch, prompts and skills. Harness resolves compatible DSH peer packages from its own runtime. Restart the profile after installation, then configure the `dsh-superagent` machine settings shown in [deployment](docs/006-deployment.md).
+
+For a local build or a GitHub release asset:
+
+```sh
+pnpm install --frozen-lockfile
+pnpm pack:plugin
+dsh plugin --profile desktop add ./.artifacts/dsh-superagent-0.2.0.tgz
+```
+
+Use `link:<checkout>` only for development. A published npm package or `.tgz` release is the normal operator installation path.
+
 ## Setup
 
 Setup has many steps, so an agent does it with you. Ask your coding agent:
